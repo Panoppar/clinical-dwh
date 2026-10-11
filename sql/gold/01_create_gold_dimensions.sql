@@ -5,11 +5,8 @@
 
 USE gold;
 
-DROP TABLE IF EXISTS `Fact_Vaccination`;
 DROP TABLE IF EXISTS `Fact_Screening_Response`;
 DROP TABLE IF EXISTS `Fact_Patient_Registration`;
-DROP TABLE IF EXISTS `Dim_Vaccine_Lot`;
-DROP TABLE IF EXISTS `Dim_Vaccine`;
 DROP TABLE IF EXISTS `Dim_Question`;
 DROP TABLE IF EXISTS `Dim_Company`;
 DROP TABLE IF EXISTS `Dim_Patient`;
@@ -75,25 +72,3 @@ CREATE TABLE `Dim_Question` (
   UNIQUE KEY `uq_dim_question_question_id` (`question_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE `Dim_Vaccine` (
-  `vaccine_sk`     INT NOT NULL AUTO_INCREMENT,
-  `vaccine_id`     INT NOT NULL,
-  `vaccine_name`   VARCHAR(150) NOT NULL,
-  PRIMARY KEY (`vaccine_sk`),
-  UNIQUE KEY `uq_dim_vaccine_vaccine_id` (`vaccine_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE `Dim_Vaccine_Lot` (
-  `lot_sk`               INT NOT NULL AUTO_INCREMENT,
-  `lot_id`               INT NOT NULL,
-  `vaccine_sk`           INT NOT NULL,
-  `lot_number`           VARCHAR(100) NOT NULL,
-  `initial_quantity`     INT NOT NULL,
-  `remaining_quantity`   INT NOT NULL,
-  `doses_administered`   INT NOT NULL,
-  `utilization_rate`     DECIMAL(5,2) NOT NULL,
-  PRIMARY KEY (`lot_sk`),
-  UNIQUE KEY `uq_dim_vaccine_lot_lot_id` (`lot_id`),
-  KEY `ix_dim_vaccine_lot_vaccine_sk` (`vaccine_sk`),
-  CONSTRAINT `fk_dim_vaccine_lot_vaccine` FOREIGN KEY (`vaccine_sk`) REFERENCES `Dim_Vaccine` (`vaccine_sk`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

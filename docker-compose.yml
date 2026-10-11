@@ -1,9 +1,9 @@
-name: vaccinework-dwh
+name: clinical-dwh
 
 # ============================================================================
-# VaccineWork Medallion Data Warehouse — local orchestration
+# Clinical Data Warehouse — local orchestration
 #
-#   source-db     : OLTP replica of the healthcare portal (vaccinework)
+#   source-db     : OLTP replica of the clinic/hospital portal (clinic_portal)
 #   warehouse-db  : MySQL DWH hosting the bronze / silver / gold schemas
 #   elt-runner    : one-shot Python job that executes the Bronze -> Silver ->
 #                   Gold pipeline, then exits (run again any time with
@@ -15,7 +15,7 @@ services:
 
   source-db:
     image: mysql:8.0
-    container_name: vw-source-db
+    container_name: cdw-source-db
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${SOURCE_DB_ROOT_PASSWORD}
@@ -36,11 +36,11 @@ services:
       timeout: 5s
       retries: 20
     networks:
-      - vw-net
+      - cdw-net
 
   warehouse-db:
     image: mysql:8.0
-    container_name: vw-warehouse-db
+    container_name: cdw-warehouse-db
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${DWH_DB_ROOT_PASSWORD}
@@ -60,12 +60,12 @@ services:
       timeout: 5s
       retries: 20
     networks:
-      - vw-net
+      - cdw-net
 
   elt-runner:
     build:
       context: ./pipeline
-    container_name: vw-elt-runner
+    container_name: cdw-elt-runner
     environment:
       SOURCE_DB_HOST: ${SOURCE_DB_HOST}
       SOURCE_DB_PORT: ${SOURCE_DB_PORT}
@@ -85,13 +85,13 @@ services:
       warehouse-db:
         condition: service_healthy
     networks:
-      - vw-net
+      - cdw-net
     # No `restart` on purpose: this is a run-to-completion batch job, not a daemon.
     profiles: ["etl"]
 
   metabase:
     image: metabase/metabase:v0.50.19
-    container_name: vw-metabase
+    container_name: cdw-metabase
     restart: unless-stopped
     ports:
       - "${METABASE_HOST_PORT}:3000"
@@ -104,10 +104,10 @@ services:
       warehouse-db:
         condition: service_healthy
     networks:
-      - vw-net
+      - cdw-net
 
 networks:
-  vw-net:
+  cdw-net:
     driver: bridge
 
 volumes:

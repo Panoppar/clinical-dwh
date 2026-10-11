@@ -3,21 +3,20 @@
 ## 1. Design rationale
 
 The Gold schema is a **dimensional model with conformed dimensions shared
-across three fact tables** (technically a "fact constellation" / galaxy
+across two fact tables** (technically a "fact constellation" / galaxy
 schema — the standard real-world shape of a "star schema" once a model
-supports more than one business process). Three business processes drive the
+supports more than one business process). Two business processes drive the
 requested executive KPIs:
 
 | Business process | Fact table | Grain | Feeds KPI |
 |---|---|---|---|
 | Patient enters the system | `Fact_Patient_Registration` | 1 row per patient | Registration velocity, corporate cohort penetration |
-| Patient answers a pre-vaccination screening question | `Fact_Screening_Response` | 1 row per (screening record × question) | Clinical safety-flag rate |
-| Patient receives a dose | `Fact_Vaccination` | 1 row per vaccination event | Doses administered, vaccine/lot utilization |
+| Patient answers a pre-procedure screening question | `Fact_Screening_Response` | 1 row per (screening record × question) | Clinical safety-flag rate |
 
-All three facts share the conformed dimensions `Dim_Date`, `Dim_Patient`,
+Both facts share the conformed dimensions `Dim_Date`, `Dim_Patient`,
 and `Dim_Company`, so an analyst can slice any KPI by date or company
 without touching the fact tables' SQL — this is what makes it a coherent
-star/galaxy schema rather than three unrelated marts.
+star/galaxy schema rather than unrelated marts.
 
 ## 2. Entity-Relationship Diagram
 
@@ -25,20 +24,14 @@ star/galaxy schema rather than three unrelated marts.
 erDiagram
     DIM_DATE ||--o{ FACT_PATIENT_REGISTRATION : "registered on"
     DIM_DATE ||--o{ FACT_SCREENING_RESPONSE : "answered on"
-    DIM_DATE ||--o{ FACT_VACCINATION : "administered on"
 
     DIM_PATIENT ||--o{ FACT_PATIENT_REGISTRATION : "is"
     DIM_PATIENT ||--o{ FACT_SCREENING_RESPONSE : "answered by"
-    DIM_PATIENT ||--o{ FACT_VACCINATION : "received by"
 
     DIM_COMPANY ||--o{ FACT_PATIENT_REGISTRATION : "cohort of"
     DIM_COMPANY ||--o{ FACT_SCREENING_RESPONSE : "cohort of"
-    DIM_COMPANY ||--o{ FACT_VACCINATION : "cohort of"
 
     DIM_QUESTION ||--o{ FACT_SCREENING_RESPONSE : "asks"
-    DIM_VACCINE ||--o{ FACT_VACCINATION : "is"
-    DIM_VACCINE_LOT ||--o{ FACT_VACCINATION : "dispensed from"
-    DIM_VACCINE ||--o{ DIM_VACCINE_LOT : "has lots of"
 
     DIM_DATE {
         int date_key PK
@@ -84,23 +77,6 @@ erDiagram
         int display_order
     }
 
-    DIM_VACCINE {
-        int vaccine_sk PK
-        int vaccine_id "natural key"
-        string vaccine_name
-    }
-
-    DIM_VACCINE_LOT {
-        int lot_sk PK
-        int lot_id "natural key"
-        int vaccine_sk FK
-        string lot_number
-        int initial_quantity
-        int remaining_quantity
-        int doses_administered
-        decimal utilization_rate
-    }
-
     FACT_PATIENT_REGISTRATION {
         int registration_sk PK
         int date_key FK
@@ -120,16 +96,6 @@ erDiagram
         int response_count "measure, always 1"
     }
 
-    FACT_VACCINATION {
-        int vaccination_sk PK
-        int date_key FK
-        int patient_sk FK
-        int company_sk FK "nullable"
-        int vaccine_sk FK
-        int lot_sk FK
-        int vaccination_id "natural key"
-        int dose_count "measure, always 1"
-    }
 ```
 
 ## 3. Dimension tables
@@ -200,25 +166,6 @@ Metabase (Kimball "zero/N-A member" pattern).
 | `is_active` | `TINYINT(1)` | | Current questionnaire item flag |
 | `display_order` | `INT` | | Questionnaire display order |
 
-### Dim_Vaccine
-| Column | Type | Key | Description |
-|---|---|---|---|
-| `vaccine_sk` | `INT` | **PK** | Surrogate key |
-| `vaccine_id` | `INT` | natural key (unique) | Source `Vaccine.vaccine_id` |
-| `vaccine_name` | `VARCHAR(150)` | | e.g. "Flu" |
-
-### Dim_Vaccine_Lot
-| Column | Type | Key | Description |
-|---|---|---|---|
-| `lot_sk` | `INT` | **PK** | Surrogate key |
-| `lot_id` | `INT` | natural key (unique) | Source `Vaccine_Lot.lot_id` |
-| `vaccine_sk` | `INT` | FK → `Dim_Vaccine` | |
-| `lot_number` | `VARCHAR(100)` | | |
-| `initial_quantity` | `INT` | | Doses received |
-| `remaining_quantity` | `INT` | | Doses on hand (current snapshot) |
-| `doses_administered` | `INT` | | Derived: `initial_quantity - remaining_quantity` |
-| `utilization_rate` | `DECIMAL(5,2)` | | Derived: `doses_administered / initial_quantity` |
-
 ### Dim_District_Population
 Not a conformed dimension joined by any fact table's FK — it's a Gold-resident
 reference table keyed by `district_code` so catchment coverage-rate KPIs can
@@ -267,20 +214,6 @@ visit). Powers clinical safety-flag rate.
 
 **Clinical safety flag rate** = `SUM(is_flagged) / SUM(response_count)`,
 sliceable by `question_sk`, `date_key`, or `company_sk`.
-
-### Fact_Vaccination
-Grain: **one row per administered dose**.
-
-| Column | Type | Key | Description |
-|---|---|---|---|
-| `vaccination_sk` | `INT` | **PK** | Surrogate key |
-| `date_key` | `INT` | FK → `Dim_Date` | Date of `shot_date` |
-| `patient_sk` | `INT` | FK → `Dim_Patient` | |
-| `company_sk` | `INT` | FK → `Dim_Company` | `-1` if not a corporate employee |
-| `vaccine_sk` | `INT` | FK → `Dim_Vaccine` | |
-| `lot_sk` | `INT` | FK → `Dim_Vaccine_Lot` | |
-| `vaccination_id` | `INT` | natural key | Source `Vaccination_Record.vaccination_id` |
-| `dose_count` | `TINYINT(1)` | measure | Always `1`; `SUM()` for total doses |
 
 ## 5. Example executive KPI queries (Metabase-ready)
 

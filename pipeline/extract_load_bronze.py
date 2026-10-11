@@ -1,5 +1,5 @@
 """
-Cross-server copy: source-db.vaccinework -> warehouse-db.bronze.
+Cross-server copy: source-db.clinic_portal -> warehouse-db.bronze.
 
 source-db and warehouse-db are separate MySQL server containers, so this
 step can't be plain SQL (no FEDERATED engine configured). Each source table
@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 import pymysql
 import pymysql.cursors
 
-SOURCE_SYSTEM_NAME = "vaccinework_portal"
+SOURCE_SYSTEM_NAME = "clinic_portal"
 
 # Explicit column order per source table — mirrors the CREATE TABLE order in
 # the source dump and in sql/bronze/01_create_bronze_tables.sql. Using an
@@ -71,19 +71,6 @@ TABLES: dict[str, list[str]] = {
     "System_Audit_Log": [
         "audit_id", "table_name", "record_id", "action_type", "old_values",
         "new_values", "changed_by", "changed_at",
-    ],
-    "Vaccine": [
-        "vaccine_id", "vaccine_name", "created_at", "created_by",
-        "updated_at", "updated_by", "deleted_at", "deleted_by",
-    ],
-    "Vaccine_Lot": [
-        "lot_id", "vaccine_id", "lot_number", "initial_quantity",
-        "remaining_quantity", "created_at", "created_by", "updated_at",
-        "updated_by", "deleted_at", "deleted_by",
-    ],
-    "Vaccination_Record": [
-        "vaccination_id", "patient_id", "lot_id", "shot_date", "created_at",
-        "created_by", "updated_at", "updated_by", "deleted_at", "deleted_by",
     ],
 }
 

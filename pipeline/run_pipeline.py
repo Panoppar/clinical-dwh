@@ -98,9 +98,9 @@ def print_row_counts(schema: str, tables: list[str]) -> None:
 
 def print_gold_summary() -> None:
     print_row_counts("gold", [
-        "Dim_Date", "Dim_Patient", "Dim_Company", "Dim_Question", "Dim_Vaccine",
-        "Dim_Vaccine_Lot", "Dim_District_Population", "Fact_Patient_Registration",
-        "Fact_Screening_Response", "Fact_Vaccination",
+        "Dim_Date", "Dim_Patient", "Dim_Company", "Dim_Question",
+        "Dim_District_Population", "Fact_Patient_Registration",
+        "Fact_Screening_Response",
     ])
 
 

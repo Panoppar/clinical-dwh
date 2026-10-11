@@ -8,9 +8,7 @@
 USE silver;
 
 DROP TABLE IF EXISTS `screening_answer`;
-DROP TABLE IF EXISTS `vaccination_record`;
 DROP TABLE IF EXISTS `screening_record`;
-DROP TABLE IF EXISTS `vaccine_lot`;
 DROP TABLE IF EXISTS `company_employee`;
 DROP TABLE IF EXISTS `employee`;
 DROP TABLE IF EXISTS `student`;
@@ -18,7 +16,6 @@ DROP TABLE IF EXISTS `external_person`;
 DROP TABLE IF EXISTS `contact`;
 DROP TABLE IF EXISTS `patient`;
 DROP TABLE IF EXISTS `screening_question`;
-DROP TABLE IF EXISTS `vaccine`;
 DROP TABLE IF EXISTS `company`;
 
 CREATE TABLE `company` (
@@ -134,39 +131,4 @@ CREATE TABLE `screening_answer` (
   KEY `ix_screening_answer_question_id` (`question_id`),
   CONSTRAINT `fk_screening_answer_record` FOREIGN KEY (`record_id`) REFERENCES `screening_record` (`record_id`),
   CONSTRAINT `fk_screening_answer_question` FOREIGN KEY (`question_id`) REFERENCES `screening_question` (`question_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE `vaccine` (
-  `vaccine_id` INT NOT NULL,
-  `vaccine_name` VARCHAR(150) NOT NULL,
-  `is_deleted` TINYINT(1) NOT NULL DEFAULT 0,
-  `created_at` DATETIME NOT NULL,
-  PRIMARY KEY (`vaccine_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE `vaccine_lot` (
-  `lot_id` INT NOT NULL,
-  `vaccine_id` INT NOT NULL,
-  `lot_number` VARCHAR(100) NOT NULL,
-  `initial_quantity` INT NOT NULL,
-  `remaining_quantity` INT NOT NULL,
-  `is_deleted` TINYINT(1) NOT NULL DEFAULT 0,
-  `created_at` DATETIME NOT NULL,
-  PRIMARY KEY (`lot_id`),
-  KEY `ix_vaccine_lot_vaccine_id` (`vaccine_id`),
-  CONSTRAINT `fk_vaccine_lot_vaccine` FOREIGN KEY (`vaccine_id`) REFERENCES `vaccine` (`vaccine_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE `vaccination_record` (
-  `vaccination_id` INT NOT NULL,
-  `patient_id` INT NOT NULL,
-  `lot_id` INT NOT NULL,
-  `shot_date` DATETIME NOT NULL,
-  `is_deleted` TINYINT(1) NOT NULL DEFAULT 0,
-  `created_at` DATETIME NOT NULL,
-  PRIMARY KEY (`vaccination_id`),
-  KEY `ix_vaccination_record_patient_id` (`patient_id`),
-  KEY `ix_vaccination_record_lot_id` (`lot_id`),
-  CONSTRAINT `fk_vaccination_record_patient` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`patient_id`),
-  CONSTRAINT `fk_vaccination_record_lot` FOREIGN KEY (`lot_id`) REFERENCES `vaccine_lot` (`lot_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

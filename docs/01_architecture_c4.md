@@ -7,17 +7,17 @@ internal component detail (that lives in the Data Dictionary and SQL scripts).
 
 ```mermaid
 C4Context
-    title VaccineWork — Medallion Data Warehouse (System Context)
+    title Clinical Data Warehouse (System Context)
 
     Person(exec, "Executive / Program Lead", "Reviews registration, safety-flag, and corporate cohort KPIs")
     Person(steward, "Data Engineer", "Operates and monitors the ELT pipeline")
 
     Enterprise_Boundary(b0, "Local Docker Environment") {
 
-        System(portal, "VaccineWork Web Portal", "Web app used by clinic staff to register patients, run pre-vaccination screening, and log vaccinations. Writes to the Source OLTP DB.")
+        System(portal, "Clinic Web Portal", "Web app used by clinic staff to register patients and run pre-procedure safety screening. Writes to the Source OLTP DB.")
 
         System_Boundary(b1, "source-db container (MySQL 8.0)") {
-            SystemDb(sourcedb, "Source OLTP Database", "MySQL — schema: vaccinework", "Patient, Screening_Record, Screening_Answer, Company, Contact, Vaccination_Record, Vaccine_Lot, ...")
+            SystemDb(sourcedb, "Source OLTP Database", "MySQL — schema: clinic_portal", "Patient, Screening_Record, Screening_Answer, Company, Contact, ...")
         }
 
         System_Boundary(b2, "elt-runner container (Python)") {
@@ -27,7 +27,7 @@ C4Context
         System_Boundary(b3, "warehouse-db container (MySQL 8.0)") {
             SystemDb(bronze, "Bronze Schema", "MySQL schema: bronze", "Raw, untransformed 1:1 replicas of source tables + load metadata")
             SystemDb(silver, "Silver Schema", "MySQL schema: silver", "Cleansed, conformed, deduplicated, typed entity tables")
-            SystemDb(gold, "Gold Schema", "MySQL schema: gold", "Dimensional Star Schema: Fact_Vaccination, Fact_Screening_Response, Fact_Patient_Registration + Dim_* tables")
+            SystemDb(gold, "Gold Schema", "MySQL schema: gold", "Dimensional Star Schema: Fact_Screening_Response, Fact_Patient_Registration + Dim_* tables")
         }
 
         System_Boundary(b4, "metabase container") {
@@ -35,7 +35,7 @@ C4Context
         }
     }
 
-    Rel(portal, sourcedb, "Writes patient, screening & vaccination records", "MySQL protocol")
+    Rel(portal, sourcedb, "Writes patient & screening records", "MySQL protocol")
     Rel(elt, sourcedb, "Extracts (SELECT, full/incremental pull)", "MySQL protocol, cross-container")
     Rel(elt, bronze, "Loads raw replicas", "INSERT, batched")
     Rel(elt, silver, "Cleanses & conforms", "INSERT INTO ... SELECT")
@@ -49,11 +49,11 @@ C4Context
 
 ## Flow narrative
 
-1. **Portal → Source DB**: Clinic staff use the VaccineWork web portal to
-   register patients, capture the bilingual pre-vaccination screening
-   questionnaire, and log administered doses against vaccine lots. This
-   writes to the normalized OLTP schema (`vaccinework`), which the
-   `source-db` container replicates locally from the provided dump.
+1. **Portal → Source DB**: Clinic staff use the clinic web portal to
+   register patients and capture the bilingual pre-procedure safety
+   screening questionnaire. This writes to the normalized OLTP schema
+   (`clinic_portal`), which the `source-db` container replicates locally
+   from the provided dump.
 
 2. **Source DB → Bronze**: The ELT pipeline extracts every source table
    **as-is** (full refresh — appropriate at this data volume) and lands it in

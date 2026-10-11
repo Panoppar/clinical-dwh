@@ -46,25 +46,3 @@ JOIN Dim_Patient dp ON dp.patient_id = p.patient_id
 JOIN Dim_Question dq ON dq.question_id = sa.question_id
 LEFT JOIN silver.company_employee ce ON ce.patient_id = p.patient_id
 LEFT JOIN Dim_Company dc ON dc.company_id = ce.company_id;
-
--- ---------------------------------------------------------------------------
--- Fact_Vaccination — grain: one row per administered dose
--- ---------------------------------------------------------------------------
-INSERT INTO Fact_Vaccination (
-  date_key, patient_sk, company_sk, vaccine_sk, lot_sk, vaccination_id, dose_count
-)
-SELECT
-  CAST(DATE_FORMAT(vr.shot_date, '%Y%m%d') AS UNSIGNED) AS date_key,
-  dp.patient_sk,
-  COALESCE(dc.company_sk, -1) AS company_sk,
-  dvl.vaccine_sk,
-  dvl.lot_sk,
-  vr.vaccination_id,
-  1 AS dose_count
-FROM silver.vaccination_record vr
-JOIN silver.patient p ON p.patient_id = vr.patient_id AND p.is_deleted = 0
-JOIN Dim_Patient dp ON dp.patient_id = p.patient_id
-JOIN Dim_Vaccine_Lot dvl ON dvl.lot_id = vr.lot_id
-LEFT JOIN silver.company_employee ce ON ce.patient_id = p.patient_id
-LEFT JOIN Dim_Company dc ON dc.company_id = ce.company_id
-WHERE vr.is_deleted = 0;

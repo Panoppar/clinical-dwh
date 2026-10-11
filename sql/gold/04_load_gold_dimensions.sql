@@ -68,31 +68,3 @@ LEFT JOIN silver.zip_code_primary_district zc ON zc.zip_code = p.zip_code;
 INSERT INTO Dim_Question (question_id, question_text_th, question_text_en, is_active, display_order)
 SELECT question_id, question_text_th, question_text_en, is_active, display_order
 FROM silver.screening_question;
-
--- ---------------------------------------------------------------------------
--- Dim_Vaccine
--- ---------------------------------------------------------------------------
-INSERT INTO Dim_Vaccine (vaccine_id, vaccine_name)
-SELECT vaccine_id, vaccine_name
-FROM silver.vaccine;
-
--- ---------------------------------------------------------------------------
--- Dim_Vaccine_Lot (depends on Dim_Vaccine already being loaded)
--- ---------------------------------------------------------------------------
-INSERT INTO Dim_Vaccine_Lot (
-  lot_id, vaccine_sk, lot_number, initial_quantity, remaining_quantity,
-  doses_administered, utilization_rate
-)
-SELECT
-  vl.lot_id,
-  dv.vaccine_sk,
-  vl.lot_number,
-  vl.initial_quantity,
-  vl.remaining_quantity,
-  (vl.initial_quantity - vl.remaining_quantity) AS doses_administered,
-  CASE WHEN vl.initial_quantity > 0
-       THEN ROUND((vl.initial_quantity - vl.remaining_quantity) / vl.initial_quantity * 100, 2)
-       ELSE 0.00
-  END AS utilization_rate
-FROM silver.vaccine_lot vl
-JOIN Dim_Vaccine dv ON dv.vaccine_id = vl.vaccine_id;

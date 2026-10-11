@@ -3,9 +3,9 @@
 Source: a Google Drive folder (`share_unprocessed_20261010`) containing 10
 groups of external population/epidemiological data collected for the
 broader KMCH catchment-analytics effort. This is **not** a replica of the
-vaccinework OLTP database — it's reference data brought in to support
+clinic_portal OLTP database — it's reference data brought in to support
 geographic/demographic KPIs (catchment population denominators, coverage
-rates) that the vaccination portal's own schema can't answer alone.
+rates) that the clinic portal's own schema can't answer alone.
 
 ## Phase 1 — ingested (this round)
 

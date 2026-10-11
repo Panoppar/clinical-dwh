@@ -1,25 +1,33 @@
-# VaccineWork — Medallion Data Warehouse
+# Clinical Data Warehouse
 
 A local, Dockerized Medallion (Bronze/Silver/Gold) ELT pipeline that ingests
-the VaccineWork healthcare portal's MySQL dump and builds a dimensional Star
-Schema for an executive Metabase dashboard.
+a clinic/hospital portal's MySQL dump — patient registration, pre-procedure
+screening, corporate cohorts — plus external population/geography reference
+data, and builds a dimensional Star Schema for an executive Metabase
+dashboard.
 
 ```
 source-db (OLTP replica) --[elt-runner]--> warehouse-db.bronze
-                                         --> warehouse-db.silver
-                                         --> warehouse-db.gold --> Metabase
+external-sources/ (flat files) --------->  warehouse-db.silver
+                                         -> warehouse-db.gold --> Metabase
 ```
 
 See [docs/01_architecture_c4.md](docs/01_architecture_c4.md) for the C4
-context diagram and [docs/02_data_dictionary.md](docs/02_data_dictionary.md)
-for the full Star Schema design and data dictionary.
+context diagram, [docs/02_data_dictionary.md](docs/02_data_dictionary.md)
+for the full Star Schema design and data dictionary, and
+[docs/03_external_reference_sources.md](docs/03_external_reference_sources.md)
+for the population/geography reference data and its provenance.
 
 ## Prerequisites
 
-- Docker Desktop (with Compose v2) running on Windows
-- The source dump `dump-vaccinework-202610022042.sql` already copied into
-  `source-db/init/01-vaccinework-dump.sql` (done — it auto-seeds `source-db`
-  on first boot)
+- Docker Desktop (with Compose v2)
+- `source-db/init/01-clinic-portal-dump.sql` is already in the repo — it
+  auto-seeds `source-db` on first boot
+- `external-sources/dopa/stat_t.txt` (50MB, gitignored — see
+  [docs/03_external_reference_sources.md](docs/03_external_reference_sources.md)
+  for why and how to get it back) must be placed at that path manually
+  before the first pipeline run, or the DOPA load step will fail on a
+  missing file
 
 ## 1. Configure environment
 
@@ -67,14 +75,17 @@ docker compose run --rm elt-runner
 This executes, in order:
 
 1. **Bronze**: creates raw 1:1 replica tables, then extracts every source
-   table and batch-loads it (`pipeline/extract_load_bronze.py`).
+   table (`pipeline/extract_load_bronze.py`) and loads the external
+   population/geography flat files (`pipeline/extract_load_external_reference.py`).
 2. **Silver**: creates cleansed/conformed tables and runs the
-   standardization + deduplication transforms (`sql/silver/`).
+   standardization + deduplication transforms, including the zip-code →
+   Thai admin-code crosswalk (`sql/silver/`).
 3. **Gold**: creates the Star Schema (`Dim_*` / `Fact_*`) and populates it
    with `INSERT INTO ... SELECT` loads joining across Silver (`sql/gold/`).
 
-It prints a row-count summary of every Gold table on success. The whole run
-is idempotent — rerun it any time without manual cleanup.
+It prints a row-count summary of Bronze/Silver reference tables and every
+Gold table on success. The whole run is idempotent — rerun it any time
+without manual cleanup.
 
 ## 4. Connect Metabase to the Gold schema
 
@@ -91,27 +102,35 @@ is idempotent — rerun it any time without manual cleanup.
 3. Save. Metabase can now only see `gold.*` — `bronze`/`silver` are not
    reachable with this account, so "BI connects strictly to the Gold tier"
    is enforced by MySQL grants, not just dashboard discipline.
-4. Build questions/dashboards against `Fact_Patient_Registration`,
-   `Fact_Screening_Response`, and `Fact_Vaccination` joined to their `Dim_*`
-   tables — see example KPI queries in
+4. Build questions/dashboards against `Fact_Patient_Registration` and
+   `Fact_Screening_Response` joined to their `Dim_*` tables (including
+   `Dim_District_Population` for catchment coverage-rate KPIs) — see
+   example KPI queries in
    [docs/02_data_dictionary.md](docs/02_data_dictionary.md#5-example-executive-kpi-queries-metabase-ready).
+
+If you're here to pull data into Python/pandas for model development
+instead of Metabase, see
+[docs/04_ml_team_onboarding.md](docs/04_ml_team_onboarding.md).
 
 ## Project layout
 
 ```
-VaccineWork-DWH/
+clinical-dwh/
 ├── docker-compose.yml
 ├── .env.example
 ├── source-db/init/            # auto-seeds the OLTP source replica
+├── external-sources/          # flat-file reference data (DOPA/NSO population, Thai geo)
 ├── sql/
 │   ├── 00_init_schemas_and_grants.sql   # warehouse bootstrap (runs once)
-│   ├── bronze/                # raw 1:1 replica DDL
-│   ├── silver/                # cleanse/conform DDL + transforms
+│   ├── bronze/                # raw 1:1 replica + reference-file DDL
+│   ├── silver/                # cleanse/conform DDL + transforms + zip crosswalk
 │   └── gold/                  # star schema DDL + dimension/fact loads
 ├── pipeline/                  # Python ELT orchestrator (elt-runner image)
 └── docs/
-    ├── 01_architecture_c4.md  # C4 context diagram (Mermaid)
-    └── 02_data_dictionary.md  # star schema design + data dictionary
+    ├── 01_architecture_c4.md             # C4 context diagram (Mermaid)
+    ├── 02_data_dictionary.md             # star schema design + data dictionary
+    ├── 03_external_reference_sources.md  # population/geo reference data provenance
+    └── 04_ml_team_onboarding.md          # clone-and-run guide for model development
 ```
 
 ## Rerunning / resetting

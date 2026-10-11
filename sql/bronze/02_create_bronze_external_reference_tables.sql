@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Bronze layer DDL — external reference data (Phase 1).
 --
--- Unlike 01_create_bronze_tables.sql (1:1 replicas of the vaccinework OLTP
+-- Unlike 01_create_bronze_tables.sql (1:1 replicas of the clinic portal OLTP
 -- database), these tables land flat-file population reference data from
 -- outside sources, used to build real denominators for catchment/coverage
 -- KPIs. See docs/03_external_reference_sources.md for provenance, license,
