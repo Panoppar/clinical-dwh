@@ -6,6 +6,20 @@
 # docs/03_external_reference_sources.md for how to re-obtain it.
 external-sources/dopa/stat_t.txt
 
+# Phase 2 shared-drive data (HDC/DDS health surveillance, Lat Krabang
+# district office tables): usage/redistribution rights for the HDC/DDS
+# portion are NOT confirmed with the data owner (see
+# docs/03_external_reference_sources.md) — loaded into the LOCAL warehouse
+# on explicit instruction, but never pushed to a shared git remote
+# regardless of that instruction. This also covers Lat Krabang's raw CSVs,
+# one of which (not even copied into this repo) carries a community
+# leader's name and phone number.
+external-sources/hdc_by_age/
+external-sources/hdc_occupational/
+external-sources/dds_extracted/
+external-sources/dds_pdf_inventory/
+external-sources/lat_krabang/
+
 # OS/editor noise
 .DS_Store
 Thumbs.db

@@ -19,12 +19,35 @@ rates) that the clinic portal's own schema can't answer alone.
 - `raaycchanghwad.csv` / `raay-ameph.csv` (group 4) — redundant roll-ups of the same data already present at finer grain inside `stat_t.txt` (confirmed by comparing row structure; the source's own `NOT_INCLUDED.csv` notes an equivalent duplicate for `raaytambl.csv`).
 - `stat_t60.xls` … `stat_t68.xls` (group 4) — yearly historical snapshots (BE 2560–2568). Useful for a future trend table, not needed for current-state coverage KPIs. Old `.xls` binary format needs a separate parser (`xlrd`), deferred.
 
-## Explicitly NOT ingested — needs a decision before any future phase touches them
+## Phase 2 — ingested on explicit instruction, including restricted groups
 
-- **Groups 1, 2, 3, 9, 10** (DDS disease-surveillance PDFs/reports, HDC region 6/13 chronic-disease exports, HDC manual exports, repo-stored-but-unused dumps, DDS-extracted-from-PDF tables): the source folder's own README states **usage terms from the data owner are not yet confirmed and the data must not be redistributed further.** None of this was copied into this project. If there's a reason to use it later, get that confirmation first — this applies even to local-only use if the warehouse is ever shared, backed up externally, or demoed to the partner hospital.
-- **Group 3** is additionally redundant with Group 2 (same HDC data, pulled manually instead of via API) — would be skipped even if cleared.
-- **Group 6** (other health/population tables) and **Group 7** (Lat Krabang district office tables): undocumented, mixed CSV/Excel formats, inconsistent/garbled filenames, no per-file schema description. Needs manual review file-by-file before a sensible ingestion design can be written.
-- **Group 8** (KMCH catchment places lists): not health data — a travel-time/market-potential place list for outreach planning. No postal code, zip code, or administrative code to join against `Dim_Patient` or the Phase 1 reference tables. Potentially useful for a separate "outreach planning" view, not a data-warehouse dimension.
+Everything below was loaded into Bronze and Silver on 2026-10-18 at the
+explicit instruction of the project owner, **overriding the Phase-1
+decision above to leave groups 1/2/3/9/10 out**. Recorded here as the
+audit trail for that decision: the usage-rights caveat from the source
+README still applies to this data; loading it into the local warehouse was
+the owner's call and risk to accept, not a determination that the
+data owner's terms were actually cleared.
+
+| Group | Files used | Bronze table(s) | Silver table(s) |
+|---|---|---|---|
+| 2_HDC_region6_13_by_age_api | 19 CSVs: chronic-disease incidence/population/death by age, health regions 6 & 13 | `hdc_disease_pop_age`, `hdc_disease_incidence`, `hdc_disease_death_age` | same names, typed + BE→CE year conversion |
+| 9_from_repo_stored_but_unused | 330 JSON files (HDC occupational-health API cache) + 3 PDFs | `hdc_occupational_health` (flattened from nested JSON); PDFs folded into the inventory table below | *(none — see "Bronze-only" note)* |
+| 10_DDS_extracted_from_pdf | `track_e_dds_yearly.csv`, `dds_snapshot_history.csv` | `dds_yearly_disease_ranking`, `dds_unit_indicator_snapshot` | `dds_yearly_disease_ranking` typed |
+| 1_DDS_health_region_reports_2022-2026 | 10 PDFs (weekly disease surveillance, regions 6 & 13) + 3 more PDFs from group 9 | `dds_pdf_report_inventory` (filename/size/sha256 only) | *(none — see "Bronze-only" note)* |
+| 6_other_health_and_population_tables | 4 clean CSVs: disease case counts, subdistrict case counts, sick-leave by group, disease-by-year | `other_health_disease_cases`, `other_health_subdistrict_cases`, `other_health_sick_by_group`, `other_health_disease_by_year` | same names, typed + BE→CE conversion |
+| 7_Lat_Krabang_district_office_tables | 9 of 10 CSVs: population/deaths by subdistrict, universities, vocational colleges, schools, hospitals, religious sites, risk points, businesses | `lat_krabang_population_by_subdistrict`, `lat_krabang_deaths_by_subdistrict`, + 7 POI tables | `lat_krabang_population_by_subdistrict` (pivoted to long), `lat_krabang_points_of_interest` (7 POI tables consolidated, type-specific fields in a JSON column) |
+| 8_KMCH_catchment_places_lists | 4 CSVs (2 column shapes, unified) | `kmch_catchment_places` | `kmch_catchment_places`, typed |
+
+**Deliberately still not loaded, even under "load everything":**
+- **Group 3** (HDC manual exports) — the source's own README states this duplicates Group 2's API-pulled data. Loading it would add ~400 messy files of pure redundancy, not new information.
+- **Lat Krabang's 10th file** (`-2564.csv`, community-level data) — contains a real community leader's name and phone number (`name_head`, `tel`). Not copied into this repo, not loaded into Bronze, not loaded anywhere. If the non-PII columns (population/housing counts by community) are wanted later, that's a column-level extraction job, not a blanket load.
+- **DDS PDF content** — the 13 PDFs (weekly surveillance reports) are tracked as a document inventory (filename, size, SHA-256) only. No OCR/table-extraction tooling was available this session to turn them into structured rows; that's a distinct, larger task, not silently skipped.
+- **Group 6/7's `.xlsx` files** and the ~400 oddly-named files in group 6 beyond the 4 clean CSVs — deferred, not dropped, pending a file-by-file pass similar to what group 7 got.
+
+**Business-registry note** (`lat_krabang_businesses` / `lat_krabang_points_of_interest` poi_type='business'): most rows are registered company names, but Thai law permits sole proprietors to register under their own personal name, and some rows do — e.g. one entry is literally a person's name, not "... Co., Ltd." That's public business-registration record, not a separate leak, but worth knowing before building anything that surfaces this table directly.
+
+**Repo note**: none of this Phase 2 data is committed to git, regardless of whether a given group carries the usage-rights caveat — see `.gitignore`. The HDC/DDS/Lat Krabang raw files stay local-only; only the SQL/Python code that loads them is version-controlled. A fresh clone needs these files manually re-obtained from the original Drive folder before running the pipeline (same pattern as `stat_t.txt`).
 
 ## Correction found during validation: `stat_t.txt` is not a single snapshot
 

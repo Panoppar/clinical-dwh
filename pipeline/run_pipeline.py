@@ -36,6 +36,9 @@ BRONZE_SCRIPTS = [
     "bronze/01_create_bronze_tables.sql",
     "bronze/02_create_bronze_external_reference_tables.sql",
     "bronze/03_create_bronze_thai_geo_tables.sql",
+    "bronze/04_create_bronze_hdc_dds_tables.sql",
+    "bronze/05_create_bronze_lat_krabang_tables.sql",
+    "bronze/06_create_bronze_kmch_other_health_tables.sql",
 ]
 SILVER_SCRIPTS = [
     "silver/01_create_silver_tables.sql",
@@ -44,6 +47,8 @@ SILVER_SCRIPTS = [
     "silver/04_transform_silver_reference.sql",
     "silver/05_create_silver_crosswalk_tables.sql",
     "silver/06_transform_silver_crosswalk.sql",
+    "silver/07_create_silver_phase2_tables.sql",
+    "silver/08_transform_silver_phase2.sql",
 ]
 GOLD_SCRIPTS = [
     "gold/01_create_gold_dimensions.sql",
@@ -109,6 +114,24 @@ def print_gold_summary() -> None:
 def print_reference_summary() -> None:
     print_row_counts("bronze", ["dopa_population_monthly", "nso_population_registration"])
     print_row_counts("silver", ["population_reference_subdistrict", "population_reference_age_sex"])
+    print_row_counts("bronze", [
+        "hdc_disease_pop_age", "hdc_disease_incidence", "hdc_disease_death_age",
+        "dds_yearly_disease_ranking", "dds_unit_indicator_snapshot", "hdc_occupational_health",
+        "dds_pdf_report_inventory", "kmch_catchment_places",
+        "other_health_disease_cases", "other_health_subdistrict_cases",
+        "other_health_sick_by_group", "other_health_disease_by_year",
+        "lat_krabang_population_by_subdistrict", "lat_krabang_deaths_by_subdistrict",
+        "lat_krabang_universities", "lat_krabang_vocational_colleges", "lat_krabang_schools",
+        "lat_krabang_risk_points", "lat_krabang_religious_sites", "lat_krabang_businesses",
+        "lat_krabang_hospitals",
+    ])
+    print_row_counts("silver", [
+        "hdc_disease_pop_age", "hdc_disease_incidence", "hdc_disease_death_age",
+        "dds_yearly_disease_ranking", "lat_krabang_population_by_subdistrict",
+        "lat_krabang_points_of_interest", "kmch_catchment_places",
+        "other_health_disease_cases", "other_health_subdistrict_cases",
+        "other_health_sick_by_group", "other_health_disease_by_year",
+    ])
 
 
 def main() -> None:
@@ -126,6 +149,10 @@ def main() -> None:
     print("\n=== BRONZE: load external population reference files ===")
     import extract_load_external_reference
     extract_load_external_reference.run()
+
+    print("\n=== BRONZE: load Phase 2 shared-drive data (HDC/DDS/Lat Krabang/KMCH/other) ===")
+    import extract_load_phase2
+    extract_load_phase2.run()
 
     print("\n=== SILVER: create tables + transform ===")
     for script in SILVER_SCRIPTS:

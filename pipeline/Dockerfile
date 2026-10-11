@@ -12,7 +12,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY run_pipeline.py extract_load_bronze.py extract_load_external_reference.py ./
+COPY run_pipeline.py extract_load_bronze.py extract_load_external_reference.py extract_load_phase2.py ./
 
 # sql/ is bind-mounted at runtime (see docker-compose.yml) so SQL edits
 # don't require an image rebuild.
