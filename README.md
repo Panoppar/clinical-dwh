@@ -116,7 +116,10 @@ cleanup.
 
 If you're here to pull data into Python/pandas for model development
 instead of Metabase, see
-[docs/04_ml_team_onboarding.md](docs/04_ml_team_onboarding.md).
+[docs/04_ml_team_onboarding.md](docs/04_ml_team_onboarding.md). If you're
+joining this project mid-stream from a separate ML project/container, see
+[docs/05_ml_model_handover.md](docs/05_ml_model_handover.md) instead —
+it's shorter and assumes you already have the repo.
 
 ## Project layout
 
@@ -135,7 +138,8 @@ clinical-dwh/
     ├── 01_architecture_c4.md             # C4 context diagram (Mermaid)
     ├── 02_data_dictionary.md             # Gold layer data dictionary
     ├── 03_external_reference_sources.md  # provenance, scope decisions, governance trail
-    └── 04_ml_team_onboarding.md          # clone-and-run guide for model development
+    ├── 04_ml_team_onboarding.md          # clone-and-run guide for model development
+    └── 05_ml_model_handover.md           # short handover for someone already on the repo, separate container
 ```
 
 ## Rerunning / resetting
