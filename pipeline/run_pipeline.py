@@ -53,6 +53,8 @@ GOLD_SCRIPTS = [
     "gold/05_load_gold_facts.sql",
     "gold/06_create_gold_population_reference.sql",
     "gold/07_load_gold_population_reference.sql",
+    "gold/08_create_gold_population_age_sex.sql",
+    "gold/09_load_gold_population_age_sex.sql",
 ]
 
 
@@ -99,8 +101,8 @@ def print_row_counts(schema: str, tables: list[str]) -> None:
 def print_gold_summary() -> None:
     print_row_counts("gold", [
         "Dim_Date", "Dim_Patient", "Dim_Company", "Dim_Question",
-        "Dim_District_Population", "Fact_Patient_Registration",
-        "Fact_Screening_Response",
+        "Dim_District_Population", "Dim_Population_By_Age_Sex",
+        "Fact_Patient_Registration", "Fact_Screening_Response",
     ])
 
 
