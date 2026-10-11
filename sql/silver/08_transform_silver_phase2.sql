@@ -65,10 +65,17 @@ FROM bronze.dds_yearly_disease_ranking;
 -- ---------------------------------------------------------------------------
 INSERT INTO lat_krabang_population_by_subdistrict (subdistrict_name_th, sex, count)
 SELECT TRIM(subdistrict_name_th), 'male', CAST(REPLACE(male, ',', '') AS SIGNED)
-FROM bronze.lat_krabang_population_by_subdistrict WHERE subdistrict_name_th IS NOT NULL
+FROM bronze.lat_krabang_population_by_subdistrict WHERE subdistrict_name_th IS NOT NULL AND TRIM(subdistrict_name_th) <> 'รวม'
 UNION ALL
 SELECT TRIM(subdistrict_name_th), 'female', CAST(REPLACE(female, ',', '') AS SIGNED)
-FROM bronze.lat_krabang_population_by_subdistrict WHERE subdistrict_name_th IS NOT NULL;
+FROM bronze.lat_krabang_population_by_subdistrict WHERE subdistrict_name_th IS NOT NULL AND TRIM(subdistrict_name_th) <> 'รวม';
+
+INSERT INTO lat_krabang_deaths_by_subdistrict (subdistrict_name_th, sex, count)
+SELECT TRIM(subdistrict_name_th), 'male', CAST(REPLACE(male, ',', '') AS SIGNED)
+FROM bronze.lat_krabang_deaths_by_subdistrict WHERE subdistrict_name_th IS NOT NULL AND TRIM(subdistrict_name_th) <> 'รวม'
+UNION ALL
+SELECT TRIM(subdistrict_name_th), 'female', CAST(REPLACE(female, ',', '') AS SIGNED)
+FROM bronze.lat_krabang_deaths_by_subdistrict WHERE subdistrict_name_th IS NOT NULL AND TRIM(subdistrict_name_th) <> 'รวม';
 
 -- ---------------------------------------------------------------------------
 -- Lat Krabang points of interest — consolidated from 7 bronze tables

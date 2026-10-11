@@ -60,6 +60,8 @@ GOLD_SCRIPTS = [
     "gold/07_load_gold_population_reference.sql",
     "gold/08_create_gold_population_age_sex.sql",
     "gold/09_load_gold_population_age_sex.sql",
+    "gold/10_create_gold_phase2_facts.sql",
+    "gold/11_load_gold_phase2_facts.sql",
 ]
 
 
@@ -108,6 +110,9 @@ def print_gold_summary() -> None:
         "Dim_Date", "Dim_Patient", "Dim_Company", "Dim_Question",
         "Dim_District_Population", "Dim_Population_By_Age_Sex",
         "Fact_Patient_Registration", "Fact_Screening_Response",
+        "Fact_HDC_Pop_Age", "Fact_HDC_Incidence", "Fact_HDC_Death_Age",
+        "Fact_DDS_Disease_Ranking", "Fact_Lat_Krabang_Population", "Fact_Lat_Krabang_Deaths",
+        "Dim_Lat_Krabang_POI",
     ])
 
 

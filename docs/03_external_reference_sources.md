@@ -49,6 +49,46 @@ data owner's terms were actually cleared.
 
 **Repo note**: none of this Phase 2 data is committed to git, regardless of whether a given group carries the usage-rights caveat — see `.gitignore`. The HDC/DDS/Lat Krabang raw files stay local-only; only the SQL/Python code that loads them is version-controlled. A fresh clone needs these files manually re-obtained from the original Drive folder before running the pipeline (same pattern as `stat_t.txt`).
 
+## Phase 2 Gold promotion + Metabase dashboards (2026-10-18)
+
+Selected Phase 2 Silver tables were promoted to Gold (`Fact_HDC_Pop_Age`,
+`Fact_HDC_Incidence`, `Fact_HDC_Death_Age`, `Fact_DDS_Disease_Ranking`,
+`Fact_Lat_Krabang_Population`, `Fact_Lat_Krabang_Deaths`,
+`Dim_Lat_Krabang_POI`) so Metabase — which can only see `gold.*` via
+`metabase_ro` — could build dashboards on them. Three dashboards exist:
+
+| Dashboard | Data | Governance |
+|---|---|---|
+| HDC Chronic Disease Surveillance | `Fact_HDC_*` (groups 2 restricted) | **Restricted** — description field on the dashboard itself carries the usage-rights warning |
+| DDS Disease Ranking (2025) | `Fact_DDS_Disease_Ranking` (group 10, restricted) | **Restricted** — same warning in the dashboard description |
+| Lat Krabang Local Area Profile | `Fact_Lat_Krabang_*`, `Dim_Lat_Krabang_POI` (group 7, unrestricted) | No restriction |
+
+The restricted dashboards' description fields carry the usage-rights
+warning directly in Metabase, not just in this doc — so anyone who later
+gets view access to this Metabase instance sees the caveat before
+exploring the data, not after.
+
+**Two bugs found and fixed while building these:**
+1. `province_code` was ambiguous in the Gold load script's `GROUP BY`
+   (both the Silver table and the province-name lookup subquery have that
+   column) — silently produced **zero rows** in every HDC/DDS Gold table
+   on the first attempt. Fixed by qualifying every reference.
+2. Lat Krabang's population/deaths-by-subdistrict source files each
+   include a `รวม` ("Total") row alongside the real subdistricts,
+   pre-summed by the source. Summing the table without excluding it
+   doubles the true total — caught by comparing `SUM(male)` (84,355,
+   matching the real total) against what a naive sum-including-รวม would
+   have given (168,710). Also discovered while fixing this: the deaths
+   data had a Silver DDL table declared but no transform ever written for
+   it — it was stuck in Bronze only. Both are now fixed and loaded through
+   to Gold.
+
+**Data characteristic, not a bug**: the HDC data (`hdc_by_age`) only
+covers Samut Prakan and Chachoengsao (province codes 11, 24) — no Bangkok
+rows exist despite the source folder being named `HDC_region6_13...`.
+Dashboard panels and any future queries against `Fact_HDC_*` should expect
+only those two provinces.
+
 ## Correction found during validation: `stat_t.txt` is not a single snapshot
 
 Initial assumption (stated above when scoping this phase) was that `stat_t.txt`

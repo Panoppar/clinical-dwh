@@ -18,6 +18,7 @@ DROP TABLE IF EXISTS `hdc_disease_incidence`;
 DROP TABLE IF EXISTS `hdc_disease_death_age`;
 DROP TABLE IF EXISTS `dds_yearly_disease_ranking`;
 DROP TABLE IF EXISTS `lat_krabang_population_by_subdistrict`;
+DROP TABLE IF EXISTS `lat_krabang_deaths_by_subdistrict`;
 DROP TABLE IF EXISTS `lat_krabang_points_of_interest`;
 DROP TABLE IF EXISTS `kmch_catchment_places`;
 DROP TABLE IF EXISTS `other_health_disease_cases`;
@@ -63,9 +64,18 @@ CREATE TABLE `dds_yearly_disease_ranking` (
 -- extras (investment amount, student counts, risk flags) kept in a JSON
 -- column rather than exploding into a dozen nullable columns no other
 -- type uses.
+-- Both source files include a "รวม" (Total) row alongside the real
+-- subdistricts, pre-summed by the source -- excluded at transform time
+-- (08_transform_silver_phase2.sql) or any SUM() over this table silently
+-- doubles the true total.
 CREATE TABLE `lat_krabang_population_by_subdistrict` (
   `subdistrict_name_th` VARCHAR(100) NOT NULL, `sex` VARCHAR(10) NOT NULL, `count` INT,
   KEY `ix_slkp_subdistrict` (`subdistrict_name_th`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `lat_krabang_deaths_by_subdistrict` (
+  `subdistrict_name_th` VARCHAR(100) NOT NULL, `sex` VARCHAR(10) NOT NULL, `count` INT,
+  KEY `ix_slkd_subdistrict` (`subdistrict_name_th`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `lat_krabang_points_of_interest` (
