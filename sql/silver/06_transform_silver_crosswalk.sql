@@ -1,5 +1,5 @@
 -- ============================================================================
--- Bronze -> Silver transform: Thai geography + zip-code admin crosswalk.
+-- Bronze -> Silver transform: Thai geography name lookup.
 -- Run AFTER 05_create_silver_crosswalk_tables.sql.
 --
 -- Note on codes: province_code is derived as FLOOR(district_code / 100),
@@ -13,9 +13,6 @@
 
 USE silver;
 
--- ---------------------------------------------------------------------------
--- thai_geography
--- ---------------------------------------------------------------------------
 INSERT INTO thai_geography (
   subdistrict_code, subdistrict_name_th, subdistrict_name_en, zip_code,
   district_code, district_name_th, district_name_en,
@@ -36,53 +33,3 @@ FROM bronze.thai_geo_subdistrict sd
 JOIN bronze.thai_geo_district d ON d.id = sd.district_id
 JOIN bronze.thai_geo_province p ON p.id = d.province_id
 WHERE sd.id IS NOT NULL AND sd.id REGEXP '^[0-9]+$';
-
--- ---------------------------------------------------------------------------
--- zip_code_admin_crosswalk — full fidelity, one row per (zip, subdistrict)
--- ---------------------------------------------------------------------------
-INSERT INTO zip_code_admin_crosswalk (
-  zip_code, subdistrict_code, subdistrict_name_en,
-  district_code, district_name_en, province_code, province_name_en
-)
-SELECT
-  zip_code, subdistrict_code, subdistrict_name_en,
-  district_code, district_name_en, province_code, province_name_en
-FROM thai_geography
-WHERE zip_code IS NOT NULL;
-
--- ---------------------------------------------------------------------------
--- zip_code_primary_district — one row per zip_code, resolved to the
--- district with the most matching subdistricts (tie-break: lowest
--- district_code), flagged when the zip genuinely spans multiple districts.
--- ---------------------------------------------------------------------------
-INSERT INTO zip_code_primary_district (
-  zip_code, district_code, district_name_th, district_name_en,
-  province_code, province_name_th, province_name_en, district_count, is_ambiguous
-)
-WITH zip_district_counts AS (
-  SELECT zip_code, district_code, COUNT(*) AS n_subdistricts
-  FROM thai_geography
-  WHERE zip_code IS NOT NULL
-  GROUP BY zip_code, district_code
-),
-ranked AS (
-  SELECT
-    zip_code, district_code, n_subdistricts,
-    COUNT(*) OVER (PARTITION BY zip_code) AS district_count,
-    ROW_NUMBER() OVER (PARTITION BY zip_code ORDER BY n_subdistricts DESC, district_code ASC) AS rn
-  FROM zip_district_counts
-)
-SELECT
-  r.zip_code,
-  r.district_code,
-  g.district_name_th,
-  g.district_name_en,
-  g.province_code,
-  g.province_name_th,
-  g.province_name_en,
-  r.district_count,
-  IF(r.district_count > 1, 1, 0) AS is_ambiguous
-FROM ranked r
-JOIN (SELECT DISTINCT district_code, district_name_th, district_name_en, province_code, province_name_th, province_name_en FROM thai_geography) g
-  ON g.district_code = r.district_code
-WHERE r.rn = 1;

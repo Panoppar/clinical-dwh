@@ -2,12 +2,12 @@
 -- Gold layer DDL — district-level population reference (denominator for
 -- catchment coverage-rate KPIs).
 --
--- This exists because the first version of the coverage-rate KPI query
--- joined Dim_Patient directly against silver.population_reference_subdistrict
--- — which breaks the "Metabase connects strictly to Gold" rule, since the
--- metabase_ro account has SELECT on gold.* only and cannot see silver.* at
--- all (confirmed via SHOW GRANTS). This table materializes exactly what
--- that KPI needs, inside Gold.
+-- This exists because an earlier coverage-rate KPI query joined directly
+-- against silver.population_reference_subdistrict — which breaks the
+-- "Metabase connects strictly to Gold" rule, since the metabase_ro account
+-- has SELECT on gold.* only and cannot see silver.* at all (confirmed via
+-- SHOW GRANTS). This table materializes the population denominator inside
+-- Gold instead.
 --
 -- Grain: one row per (district_code, year_ce) — the source data is a
 -- 28-point year-end time series (BE2536-2563 / CE1993-2020), kept at full

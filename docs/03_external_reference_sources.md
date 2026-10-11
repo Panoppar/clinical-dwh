@@ -2,10 +2,14 @@
 
 Source: a Google Drive folder (`share_unprocessed_20261010`) containing 10
 groups of external population/epidemiological data collected for the
-broader KMCH catchment-analytics effort. This is **not** a replica of the
-clinic_portal OLTP database — it's reference data brought in to support
-geographic/demographic KPIs (catchment population denominators, coverage
-rates) that the clinic portal's own schema can't answer alone.
+broader KMCH catchment-analytics effort. **As of 2026-10-19, this is the
+only data in the warehouse** — an earlier phase of this project also fed a
+clinic/patient OLTP source (`clinic_portal`, formerly a vaccination
+portal) into the same Bronze/Silver/Gold pipeline, but that entire
+pipeline (source database, container, and every Bronze/Silver/Gold table
+built from it) was deleted on explicit instruction to keep the warehouse
+scoped to this Drive folder's data only. See "Clinic/patient data removal"
+below for what that took.
 
 ## Phase 1 — ingested (this round)
 
@@ -125,31 +129,39 @@ or the DOPA bronze/silver load step will fail on a missing file. Everything
 else under `external-sources/` (NSO CSVs, Thai geo CSVs) is small enough to
 commit directly and is in version control.
 
-## Zip-code crosswalk — built and joined to Gold
+## Clinic/patient data removal (2026-10-19)
 
-The zip ↔ admin-code crosswalk flagged above as the next step is now built
-and wired all the way into Gold:
+A zip-code ↔ Thai admin-code crosswalk (`silver.zip_code_admin_crosswalk`,
+`silver.zip_code_primary_district`) was previously built and joined into
+`gold.Dim_Patient.district_code`/`province_code` so clinic registrations
+could be analyzed by catchment district. That entire line of work is gone
+now, on explicit instruction to exclude everything not sourced from this
+Drive folder (the clinic data was from a hospital's own vaccination
+portal, not this folder):
 
-- `silver.zip_code_admin_crosswalk` — full-fidelity bridge, one row per
-  (zip_code, subdistrict_code). A zip code is **not** 1:1 with a district:
-  167 of 966 distinct zip codes in the reference data (17%) legitimately
-  span more than one district, so this table preserves every subdistrict a
-  zip could mean.
-- `silver.zip_code_primary_district` — one row per zip_code, resolved to its
-  most-common district (tie-break: lowest district code), with
-  `district_count` and `is_ambiguous` so the simplification is visible
-  rather than silently hidden.
-- `gold.Dim_Patient` now carries `district_code`, `district_name_en`,
-  `province_code`, `province_name_en`, `is_geo_ambiguous` — resolved via a
-  `LEFT JOIN` to `zip_code_primary_district` on load, so patients with a
-  missing/invalid zip (one patient has `730000`, a 6-digit value — invalid
-  for a Thai postal code) simply get NULL geography rather than a bad match
-  or a failed load.
-
-Validated against real data: zip `10520` resolves to Lat Krabang,
-Bangkok — the hospital's own district — and a coverage-rate query (resident
-population denominator from `silver.population_reference_subdistrict`,
-year BE2563/2020) shows Lat Krabang with the highest registration
-penetration of any district, falling off with distance, exactly as a real
-catchment-area pattern should look. See the example query in
-[02_data_dictionary.md](02_data_dictionary.md#5-example-executive-kpi-queries-metabase-ready).
+- The `clinic_portal` source database, its Docker container, volume, and
+  the dump file that seeded it (`source-db/init/01-clinic-portal-dump.sql`)
+  are deleted — not stopped, not archived, actually removed. There is no
+  copy of that data left in this project.
+- Every Bronze/Silver/Gold table built from it (`Patient`, `Screening_*`,
+  `Company`, `Dim_Patient`, `Dim_Company`, `Dim_Question`,
+  `Fact_Patient_Registration`, `Fact_Screening_Response`, and the
+  now-unused `Dim_Date` calendar table) is deleted, along with the Python
+  loader (`extract_load_bronze.py`) and every SQL file that created or
+  populated them.
+- The zip-code crosswalk tables above are **also removed** — they existed
+  solely to resolve `Dim_Patient.zip_code`, and nothing in the surviving
+  warehouse carries a zip code field. `silver.thai_geography` (the
+  underlying province/district/subdistrict **name** lookup, as opposed to
+  the zip-specific crosswalk) is kept — several surviving Gold tables
+  (`Dim_District_Population`, `Dim_Population_By_Age_Sex`, `Fact_HDC_*`,
+  `Fact_DDS_Disease_Ranking`) join against it purely to resolve English
+  province/district names, so it's still load-bearing infrastructure, not
+  orphaned code.
+- Verified after the rebuild: `SHOW DATABASES` no longer lists
+  `clinic_portal` at all (the container is gone), and a search across
+  `information_schema.tables` for `%Patient%`/`%Screening%`/`%Company%`
+  returns zero rows anywhere in `bronze`/`silver`/`gold`.
+- None of the four Metabase dashboards built in this project ever
+  referenced the clinic tables (checked by searching every saved card's
+  SQL before deleting anything), so no dashboard cleanup was needed.

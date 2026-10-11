@@ -1,10 +1,13 @@
 name: clinical-dwh
 
 # ============================================================================
-# Clinical Data Warehouse — local orchestration
+# Regional Health & Population Data Warehouse — local orchestration
 #
-#   source-db     : OLTP replica of the clinic/hospital portal (clinic_portal)
-#   warehouse-db  : MySQL DWH hosting the bronze / silver / gold schemas
+#   warehouse-db  : MySQL DWH hosting the bronze / silver / gold schemas,
+#                   built entirely from externally-sourced reference data
+#                   (DOPA/NSO population, HDC/DDS health surveillance,
+#                   Lat Krabang/KMCH local-area data) -- no clinic/patient
+#                   source system feeds this warehouse.
 #   elt-runner    : one-shot Python job that executes the Bronze -> Silver ->
 #                   Gold pipeline, then exits (run again any time with
 #                   `docker compose run --rm elt-runner`)
@@ -12,31 +15,6 @@ name: clinical-dwh
 # ============================================================================
 
 services:
-
-  source-db:
-    image: mysql:8.0
-    container_name: cdw-source-db
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: ${SOURCE_DB_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${SOURCE_DB_NAME}
-      MYSQL_USER: ${SOURCE_DB_USER}
-      MYSQL_PASSWORD: ${SOURCE_DB_PASSWORD}
-      TZ: Asia/Bangkok
-    ports:
-      - "${SOURCE_DB_HOST_PORT}:3306"
-    volumes:
-      - source_db_data:/var/lib/mysql
-      # Dump auto-executes on first container boot (docker-entrypoint-initdb.d)
-      - ./source-db/init:/docker-entrypoint-initdb.d:ro
-    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${SOURCE_DB_ROOT_PASSWORD}"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-    networks:
-      - cdw-net
 
   warehouse-db:
     image: mysql:8.0
@@ -67,11 +45,6 @@ services:
       context: ./pipeline
     container_name: cdw-elt-runner
     environment:
-      SOURCE_DB_HOST: ${SOURCE_DB_HOST}
-      SOURCE_DB_PORT: ${SOURCE_DB_PORT}
-      SOURCE_DB_NAME: ${SOURCE_DB_NAME}
-      SOURCE_DB_USER: root
-      SOURCE_DB_PASSWORD: ${SOURCE_DB_ROOT_PASSWORD}
       DWH_DB_HOST: ${DWH_DB_HOST}
       DWH_DB_PORT: ${DWH_DB_PORT}
       DWH_DB_USER: root
@@ -80,8 +53,6 @@ services:
       - ./sql:/app/sql:ro
       - ./external-sources:/app/external-sources:ro
     depends_on:
-      source-db:
-        condition: service_healthy
       warehouse-db:
         condition: service_healthy
     networks:
@@ -111,6 +82,5 @@ networks:
     driver: bridge
 
 volumes:
-  source_db_data:
   warehouse_db_data:
   metabase_data:

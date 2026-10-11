@@ -1,9 +1,8 @@
 """
 Loads external population-reference flat files (DOPA, NSO) into Bronze.
 
-Unlike extract_load_bronze.py, there is no "source database" here — these
-are government open-data flat files checked into external-sources/ and
-bind-mounted into this container (see docker-compose.yml). Assumes
+These are government open-data flat files checked into external-sources/
+and bind-mounted into this container (see docker-compose.yml). Assumes
 sql/bronze/02_create_bronze_external_reference_tables.sql has already
 (re)created empty tables in this run.
 

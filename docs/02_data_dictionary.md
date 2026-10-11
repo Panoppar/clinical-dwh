@@ -1,265 +1,177 @@
-# Gold Layer — Star Schema & Data Dictionary
+# Gold Layer — Data Dictionary
 
 ## 1. Design rationale
 
-The Gold schema is a **dimensional model with conformed dimensions shared
-across two fact tables** (technically a "fact constellation" / galaxy
-schema — the standard real-world shape of a "star schema" once a model
-supports more than one business process). Two business processes drive the
-requested executive KPIs:
+This Gold schema has **no conformed star schema with a central fact
+grain** in the traditional Kimball sense — it's a set of independent
+dimensional tables, each built from a different external reference
+source, joined only where they share a natural key (province code).
+That's the honest shape of the data: population statistics, disease
+surveillance, and local-area tables don't share a common business
+process the way a single organization's OLTP system would.
 
-| Business process | Fact table | Grain | Feeds KPI |
-|---|---|---|---|
-| Patient enters the system | `Fact_Patient_Registration` | 1 row per patient | Registration velocity, corporate cohort penetration |
-| Patient answers a pre-procedure screening question | `Fact_Screening_Response` | 1 row per (screening record × question) | Clinical safety-flag rate |
+| Domain | Tables | Source |
+|---|---|---|
+| Population reference | `Dim_District_Population`, `Dim_Population_By_Age_Sex` | DOPA, NSO |
+| HDC chronic disease surveillance | `Fact_HDC_Pop_Age`, `Fact_HDC_Incidence`, `Fact_HDC_Death_Age` | HDC region 6/13 by-age API exports (**restricted**, see §4) |
+| DDS disease ranking | `Fact_DDS_Disease_Ranking` | DDS yearly priority report (**restricted**, see §4) |
+| Lat Krabang local area | `Fact_Lat_Krabang_Population`, `Fact_Lat_Krabang_Deaths`, `Dim_Lat_Krabang_POI` | Lat Krabang district office tables (unrestricted) |
 
-Both facts share the conformed dimensions `Dim_Date`, `Dim_Patient`,
-and `Dim_Company`, so an analyst can slice any KPI by date or company
-without touching the fact tables' SQL — this is what makes it a coherent
-star/galaxy schema rather than unrelated marts.
-
-## 2. Entity-Relationship Diagram
-
-```mermaid
-erDiagram
-    DIM_DATE ||--o{ FACT_PATIENT_REGISTRATION : "registered on"
-    DIM_DATE ||--o{ FACT_SCREENING_RESPONSE : "answered on"
-
-    DIM_PATIENT ||--o{ FACT_PATIENT_REGISTRATION : "is"
-    DIM_PATIENT ||--o{ FACT_SCREENING_RESPONSE : "answered by"
-
-    DIM_COMPANY ||--o{ FACT_PATIENT_REGISTRATION : "cohort of"
-    DIM_COMPANY ||--o{ FACT_SCREENING_RESPONSE : "cohort of"
-
-    DIM_QUESTION ||--o{ FACT_SCREENING_RESPONSE : "asks"
-
-    DIM_DATE {
-        int date_key PK
-        date full_date
-        int year
-        int quarter
-        int month
-        string month_name
-        int day
-        int day_of_week
-        string day_name
-        boolean is_weekend
-        int week_of_year
-    }
-
-    DIM_PATIENT {
-        int patient_sk PK
-        int patient_id "natural key"
-        string document_type
-        string patient_type_code
-        string patient_type_desc
-        string sex
-        int age
-        string age_band
-        boolean has_underlying_disease
-        boolean is_deleted
-        timestamp source_created_at
-    }
-
-    DIM_COMPANY {
-        int company_sk PK
-        int company_id "natural key"
-        string company_name
-        boolean is_active
-    }
-
-    DIM_QUESTION {
-        int question_sk PK
-        int question_id "natural key"
-        string question_text_th
-        string question_text_en
-        boolean is_active
-        int display_order
-    }
-
-    FACT_PATIENT_REGISTRATION {
-        int registration_sk PK
-        int date_key FK
-        int patient_sk FK
-        int company_sk FK "nullable"
-        int registration_count "measure, always 1"
-    }
-
-    FACT_SCREENING_RESPONSE {
-        int screening_response_sk PK
-        int date_key FK
-        int patient_sk FK
-        int company_sk FK "nullable"
-        int question_sk FK
-        int record_id "degenerate dimension"
-        boolean is_flagged "measure"
-        int response_count "measure, always 1"
-    }
-
-```
-
-## 3. Dimension tables
-
-### Dim_Date
-Standard calendar dimension, pre-generated for 2024-01-01 → 2030-12-31.
-
-| Column | Type | Key | Description |
-|---|---|---|---|
-| `date_key` | `INT` | **PK** | Surrogate key, format `YYYYMMDD` |
-| `full_date` | `DATE` | | Calendar date |
-| `year` | `SMALLINT` | | e.g. 2026 |
-| `quarter` | `TINYINT` | | 1–4 |
-| `month` | `TINYINT` | | 1–12 |
-| `month_name` | `VARCHAR(20)` | | "October" |
-| `day` | `TINYINT` | | 1–31 |
-| `day_of_week` | `TINYINT` | | 1 (Mon) – 7 (Sun), ISO |
-| `day_name` | `VARCHAR(20)` | | "Thursday" |
-| `is_weekend` | `TINYINT(1)` | | 1 if Sat/Sun |
-| `week_of_year` | `TINYINT` | | ISO week number |
-
-### Dim_Patient
-Grain: one row per patient (SCD Type 1 — overwrite on reload; acceptable for
-demographic attributes at this scale). **Deliberately excludes direct
-identifiers** (`id_card`, `passport_id`, `tel_no`, `email`, `address`,
-`line_id`, names) to minimize PII exposure in the BI layer.
-
-| Column | Type | Key | Description |
-|---|---|---|---|
-| `patient_sk` | `INT` | **PK** | Surrogate key |
-| `patient_id` | `INT` | natural key (unique) | Source `Patient.patient_id` |
-| `document_type` | `VARCHAR(20)` | | `ID_CARD` \| `PASSPORT` \| `UNKNOWN` |
-| `patient_type_code` | `VARCHAR(20)` | | `employee` \| `student` \| `company_employee` \| `external` |
-| `patient_type_desc` | `VARCHAR(50)` | | "Internal Employee", "Student", "Corporate Employee", "External / Visitor" |
-| `sex` | `VARCHAR(10)` | | `male` \| `female` |
-| `age` | `INT` | | Age in years at registration (nullable) |
-| `age_band` | `VARCHAR(10)` | | `<18`,`18-29`,`30-39`,`40-49`,`50-59`,`60+`,`Unknown` |
-| `has_underlying_disease` | `TINYINT(1)` | | Derived: 1 if `underlying_disease` populated |
-| `is_deleted` | `TINYINT(1)` | | Derived from source soft-delete (`deleted_at IS NOT NULL`) |
-| `source_created_at` | `TIMESTAMP` | | Original registration timestamp — join target for registration velocity and hour-of-day velocity |
-| `zip_code` | `VARCHAR(9)` | | Postal code only (no street address) — added for geographic catchment KPIs; nullable |
-| `district_code` | `INT` | | Resolved from `zip_code` via `silver.zip_code_primary_district`; NULL if zip missing/invalid/unmatched |
-| `district_name_en` | `VARCHAR(100)` | | |
-| `province_code` | `INT` | | Official Thai 2-digit province code (matches DOPA's `CC-CODE`) |
-| `province_name_en` | `VARCHAR(100)` | | |
-| `is_geo_ambiguous` | `TINYINT(1)` | | 1 if the zip code genuinely spans more than one district (17% of Thai zip codes do) — `district_code` is the most-likely match, not certain, when this is 1 |
-
-### Dim_Company
-| Column | Type | Key | Description |
-|---|---|---|---|
-| `company_sk` | `INT` | **PK** | Surrogate key |
-| `company_id` | `INT` | natural key (unique) | Source `Company.company_id` |
-| `company_name` | `VARCHAR(255)` | | Standardized (trimmed) company name |
-| `is_active` | `TINYINT(1)` | | 1 if not soft-deleted |
-
-A synthetic `company_sk = -1` ("Not Applicable / Non-Corporate") row is
-seeded so fact rows for non-corporate patients (`employee`, `student`,
-`external`) use a real FK instead of `NULL`, keeping joins simple in
-Metabase (Kimball "zero/N-A member" pattern).
-
-### Dim_Question
-| Column | Type | Key | Description |
-|---|---|---|---|
-| `question_sk` | `INT` | **PK** | Surrogate key |
-| `question_id` | `INT` | natural key (unique) | Source `Screening_Question.question_id` |
-| `question_text_th` | `TEXT` | | Thai text, split from the bilingual source string |
-| `question_text_en` | `TEXT` | | English text, split from the bilingual source string |
-| `is_active` | `TINYINT(1)` | | Current questionnaire item flag |
-| `display_order` | `INT` | | Questionnaire display order |
+## 2. Population reference tables
 
 ### Dim_District_Population
-Not a conformed dimension joined by any fact table's FK — it's a Gold-resident
-reference table keyed by `district_code` so catchment coverage-rate KPIs can
-join `Dim_Patient.district_code` without leaving the Gold schema (see
-[03_external_reference_sources.md](03_external_reference_sources.md) for why
-that boundary matters). Grain: one row per district per year.
+Grain: one row per district per year. Time series spans 1993–2020 (DOPA);
+treat pre-1997 rows as **not comparable** to later years — the source
+changed its registration-office coding scheme around 1996/1997, producing
+a ~10x population discontinuity that's a genuine data-era boundary, not a
+pipeline bug.
 
 | Column | Type | Key | Description |
 |---|---|---|---|
-| `district_code` | `INT` | **PK (composite)** | Matches `Dim_Patient.district_code` |
-| `year_ce` | `INT` | **PK (composite)** | Gregorian year; data spans 1993–2020 |
+| `district_code` | `INT` | **PK (composite)** | Official Thai district code |
+| `year_ce` | `INT` | **PK (composite)** | Gregorian year |
 | `district_name_th` / `district_name_en` | `VARCHAR(100)` | | |
 | `province_code` | `INT` | | |
 | `province_name_th` / `province_name_en` | `VARCHAR(100)` | | |
-| `male`, `female`, `total`, `house` | `INT` | | Resident population counts for that district/year |
+| `male`, `female`, `total`, `house` | `INT` | | Resident population/household counts for that district/year |
 
-## 4. Fact tables
+### Dim_Population_By_Age_Sex
+Grain: one row per (scope, province, sex, age_label, year). `scope` is
+`national` or `province` — only Bangkok, Samut Prakan, and Chachoengsao
+have province-level rows (the NSO extract was scoped to those three).
+Single year (BE2567/CE2024) only — not a time series.
 
-### Fact_Patient_Registration
-Factless-style fact (measure is a constant `1`) — grain: **one row per
-patient**. Powers registration velocity (trend by `date_key`) and corporate
-cohort penetration (`COUNT(*) WHERE company_sk <> -1` vs. total).
+| Column | Type | Description |
+|---|---|---|
+| `scope` | `VARCHAR(10)` | `national` \| `province` |
+| `province_code` | `INT` | NULL for `scope='national'` |
+| `province_name_th` / `province_name_en` | `VARCHAR(100)` | |
+| `sex` | `VARCHAR(10)` | `Total` \| `Male` \| `Female` |
+| `age_label` | `VARCHAR(20)` | Original SDMX age code (kept for traceability) |
+| `age_exact` | `INT` | Populated when `age_qualifier='exact'` |
+| `age_qualifier` | `VARCHAR(10)` | `exact` \| `le` \| `ge` \| `total` \| `other` |
+| `year_be` / `year_ce` | `INT` | Thai Buddhist Era / Gregorian year |
+| `population_count` | `INT` | |
 
-| Column | Type | Key | Description |
-|---|---|---|---|
-| `registration_sk` | `INT` | **PK** | Surrogate key |
-| `date_key` | `INT` | FK → `Dim_Date` | Date of `Patient.created_at` |
-| `patient_sk` | `INT` | FK → `Dim_Patient` | |
-| `company_sk` | `INT` | FK → `Dim_Company` | `-1` if not a corporate employee |
-| `registration_count` | `TINYINT(1)` | measure | Always `1`; `SUM()` in Metabase for counts |
+## 3. HDC chronic disease surveillance (⚠ restricted — see §4)
 
-### Fact_Screening_Response
-Grain: **one row per screening answer** (one row per question per screening
-visit). Powers clinical safety-flag rate.
+Grain note: age_group1..5 are the source system's own codes. **The source
+does not document the numeric age boundaries anywhere in the export** —
+ordering (Group 1 lowest disease burden → Group 5 highest) strongly
+suggests youngest-to-oldest, but treat that as an inference, not a
+confirmed mapping. Coverage is Samut Prakan and Chachoengsao only — no
+Bangkok rows exist despite the source folder being named
+`HDC_region6_13...`.
 
-| Column | Type | Key | Description |
-|---|---|---|---|
-| `screening_response_sk` | `INT` | **PK** | Surrogate key |
-| `date_key` | `INT` | FK → `Dim_Date` | Date of `Screening_Record.created_at` |
-| `patient_sk` | `INT` | FK → `Dim_Patient` | |
-| `company_sk` | `INT` | FK → `Dim_Company` | `-1` if not a corporate employee |
-| `question_sk` | `INT` | FK → `Dim_Question` | |
-| `record_id` | `INT` | degenerate dim | Groups answers belonging to the same screening visit |
-| `is_flagged` | `TINYINT(1)` | measure | `1` if the patient answered "yes" to this safety question |
-| `response_count` | `TINYINT(1)` | measure | Always `1`; denominator for flag-rate % |
+### Fact_HDC_Pop_Age
+One row per (disease, province, year, age_group).
 
-**Clinical safety flag rate** = `SUM(is_flagged) / SUM(response_count)`,
-sliceable by `question_sk`, `date_key`, or `company_sk`.
+| Column | Type | Description |
+|---|---|---|
+| `disease` | `VARCHAR(30)` | Short code: `ca_breast`, `ca_cervix`, `ca_lung`, `copd`, `coronary`, `dm`, `emphysema`, `ht`, `stroke` |
+| `province_code` / `province_name_en` | | |
+| `year_ce` | `INT` | |
+| `age_group` | `VARCHAR(20)` | `Age Group 1`–`Age Group 5` |
+| `population` | `BIGINT` | At-risk population in that age group |
+| `cases` | `BIGINT` | Screened/confirmed cases |
 
-## 5. Example executive KPI queries (Metabase-ready)
+### Fact_HDC_Incidence
+One row per (disease, province, year). Diseases: `asthma`, `copd`,
+`coronary`, `dm`, `ht`, `ihd`.
+
+| Column | Type | Description |
+|---|---|---|
+| `target` | `BIGINT` | Screening target population |
+| `result` | `BIGINT` | Actual screened/positive count |
+| `achievement_rate_pct` | `DECIMAL(6,2)` | `result / target * 100` |
+
+### Fact_HDC_Death_Age
+Same grain and age-group caveat as `Fact_HDC_Pop_Age`. Diseases: `copd`,
+`coronary`, `dm`, `ht`.
+
+| Column | Type | Description |
+|---|---|---|
+| `person_time` | `BIGINT` | Person-time denominator |
+| `deaths` | `BIGINT` | |
+
+## 4. DDS disease ranking (⚠ restricted — see §4)
+
+### Fact_DDS_Disease_Ranking
+One row per (province, year, disease) — top ~20 ranked diseases per
+province. **Single year only (2025)** — not a trend table.
+
+| Column | Type | Description |
+|---|---|---|
+| `province_code` / `province_name_en` / `province_name_th` | | |
+| `year_ce` | `INT` | |
+| `disease_th` | `VARCHAR(100)` | Disease name, Thai only |
+| `case_count`, `death_count` | `BIGINT` | |
+| `case_fatality_pct` | `DECIMAL(6,2)` | |
+| `rate_per_100k` | `DECIMAL(10,2)` | Normalized rate — use this, not raw `case_count`, when comparing provinces of different sizes |
+| `rank_by_cases` | `INT` | 1 = most cases that year in that province |
+| `is_provisional` | `TINYINT(1)` | |
+
+## ⚠ Restricted-data note
+
+`Fact_HDC_*` and `Fact_DDS_Disease_Ranking` are built from data whose
+redistribution rights are **not confirmed with the data owner**. Loaded
+into this local warehouse on explicit instruction — see
+[03_external_reference_sources.md](03_external_reference_sources.md) for
+the full governance trail. The Metabase dashboards built on these tables
+carry the same warning directly in their description field.
+
+## 5. Lat Krabang local area (unrestricted)
+
+### Fact_Lat_Krabang_Population / Fact_Lat_Krabang_Deaths
+One row per (subdistrict, sex). Source files include a pre-summed `รวม`
+("Total") row alongside the real subdistricts — **excluded** at the
+Silver transform step; `SUM(population)` or `SUM(deaths)` over these
+tables is safe to use directly without further filtering.
+
+| Column | Type | Description |
+|---|---|---|
+| `subdistrict_name_th` | `VARCHAR(100)` | |
+| `sex` | `VARCHAR(10)` | `male` \| `female` |
+| `population` / `deaths` | `BIGINT` | |
+
+### Dim_Lat_Krabang_POI
+One row per point of interest (university, vocational college, school,
+hospital, religious site, risk point, or business). Most fields are
+type-specific and NULL for other types.
+
+| Column | Type | Description |
+|---|---|---|
+| `poi_type` | `VARCHAR(20)` | `university` \| `vocational_college` \| `school` \| `hospital` \| `religious_site` \| `risk_point` \| `business` |
+| `name_th` | `VARCHAR(300)` | |
+| `investment_thb` | `DECIMAL(15,2)` | Only for `poi_type='business'`. Most rows are registered company names, but Thai law permits sole proprietors to register under their own personal name — a few rows are literally an individual's name, not "... Co., Ltd." That's public business-registration record, not a data leak, but worth knowing before surfacing this table directly. |
+| `student_num` | `INT` | Only for `poi_type='school'` |
+| `risk_type` | `VARCHAR(10)` | Only for `poi_type='risk_point'` |
+
+## 6. Example queries (Metabase-ready, Gold-only)
 
 ```sql
--- Registration velocity (weekly)
-SELECT d.year, d.week_of_year, SUM(f.registration_count) AS registrations
-FROM gold.Fact_Patient_Registration f
-JOIN gold.Dim_Date d ON d.date_key = f.date_key
-GROUP BY d.year, d.week_of_year
-ORDER BY d.year, d.week_of_year;
+-- Catchment coverage: Lat Krabang's population vs. whole-district services
+SELECT subdistrict_name_th, SUM(population) AS population
+FROM Fact_Lat_Krabang_Population
+GROUP BY subdistrict_name_th
+ORDER BY population DESC;
 
--- Clinical safety flag rate by question
-SELECT q.question_text_en,
-       SUM(f.is_flagged) AS flagged_count,
-       SUM(f.response_count) AS total_responses,
-       ROUND(SUM(f.is_flagged) / SUM(f.response_count) * 100, 1) AS flag_rate_pct
-FROM gold.Fact_Screening_Response f
-JOIN gold.Dim_Question q ON q.question_sk = f.question_sk
-GROUP BY q.question_text_en
-ORDER BY flag_rate_pct DESC;
+-- Chronic disease mortality, ranked
+SELECT disease, SUM(deaths) AS total_deaths
+FROM Fact_HDC_Death_Age
+GROUP BY disease
+ORDER BY total_deaths DESC;
 
--- Corporate cohort penetration
-SELECT c.company_name,
-       SUM(f.registration_count) AS registered_patients
-FROM gold.Fact_Patient_Registration f
-JOIN gold.Dim_Company c ON c.company_sk = f.company_sk
-WHERE c.company_sk <> -1
-GROUP BY c.company_name
-ORDER BY registered_patients DESC;
+-- Disease rate per 100k, normalized province comparison
+SELECT province_name_en, disease_th, rate_per_100k
+FROM Fact_DDS_Disease_Ranking
+WHERE rank_by_cases <= 5
+ORDER BY rate_per_100k DESC;
 
--- Catchment coverage rate by district (registrations vs. resident population)
--- Stays entirely inside gold.* — Metabase's metabase_ro account has SELECT
--- on gold only, so a query touching silver.* would fail from inside
--- Metabase even though it works fine from a root/elt connection.
--- Dim_District_Population is a multi-year time series (CE1993-2020) — pin
--- to one year_ce (here 2020, the latest available) or the join below will
--- fan out across every year that district has a row for.
-SELECT
-    dp.district_name_en, dp.province_name_en,
-    COUNT(*) AS registered_patients,
-    pop.total AS district_population_2020,
-    ROUND(COUNT(*) * 100.0 / pop.total, 4) AS coverage_pct
-FROM gold.Dim_Patient dp
-JOIN gold.Dim_District_Population pop
-  ON pop.district_code = dp.district_code AND pop.year_ce = 2020
-WHERE dp.district_code IS NOT NULL
-GROUP BY dp.district_name_en, dp.province_name_en, pop.total
-ORDER BY registered_patients DESC;
+-- Province population trend (comparable years only, see §2 caveat)
+SELECT year_ce, province_name_en, SUM(total) AS population
+FROM Dim_District_Population
+WHERE province_code IN (10, 11, 24) AND year_ce >= 1997
+GROUP BY year_ce, province_name_en
+ORDER BY year_ce;
 ```

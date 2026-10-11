@@ -1,9 +1,8 @@
 -- ============================================================================
 -- Gold layer DDL — national/provincial population by age x sex.
--- Source: NSO (external reference data, not clinic_portal). Promotes
--- silver.population_reference_age_sex into Gold so Metabase (gold-only via
--- metabase_ro) can build population-pyramid style panels without touching
--- clinic/patient data at all.
+-- Source: NSO. Promotes silver.population_reference_age_sex into Gold so
+-- Metabase (gold-only via metabase_ro) can build population-pyramid
+-- style panels.
 -- ============================================================================
 
 USE gold;

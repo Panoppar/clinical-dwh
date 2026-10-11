@@ -7,6 +7,11 @@ Usage (normally invoked via docker compose, not directly):
 Each layer is a full refresh: every *.sql script in sql/<layer>/ drops and
 recreates its own tables, so reruns are idempotent — there is no manual
 cleanup step between runs.
+
+This warehouse is built entirely from externally-sourced reference data
+(DOPA/NSO population, HDC/DDS health surveillance, Lat Krabang/KMCH
+local-area data) from the shared Drive folder -- there is no clinic/
+patient source system feeding it.
 """
 
 import os
@@ -24,16 +29,9 @@ DWH_PORT = int(os.environ["DWH_DB_PORT"])
 DWH_USER = os.environ["DWH_DB_USER"]
 DWH_PASSWORD = os.environ["DWH_DB_PASSWORD"]
 
-SOURCE_HOST = os.environ["SOURCE_DB_HOST"]
-SOURCE_PORT = int(os.environ["SOURCE_DB_PORT"])
-SOURCE_USER = os.environ["SOURCE_DB_USER"]
-SOURCE_PASSWORD = os.environ["SOURCE_DB_PASSWORD"]
-SOURCE_DB_NAME = os.environ["SOURCE_DB_NAME"]
-
 # Execution order matters: each layer's DDL must run before its DML, and
 # Gold DDL/DML order matters because facts carry FKs into dimensions.
 BRONZE_SCRIPTS = [
-    "bronze/01_create_bronze_tables.sql",
     "bronze/02_create_bronze_external_reference_tables.sql",
     "bronze/03_create_bronze_thai_geo_tables.sql",
     "bronze/04_create_bronze_hdc_dds_tables.sql",
@@ -41,8 +39,6 @@ BRONZE_SCRIPTS = [
     "bronze/06_create_bronze_kmch_other_health_tables.sql",
 ]
 SILVER_SCRIPTS = [
-    "silver/01_create_silver_tables.sql",
-    "silver/02_transform_silver.sql",
     "silver/03_create_silver_reference_tables.sql",
     "silver/04_transform_silver_reference.sql",
     "silver/05_create_silver_crosswalk_tables.sql",
@@ -51,11 +47,6 @@ SILVER_SCRIPTS = [
     "silver/08_transform_silver_phase2.sql",
 ]
 GOLD_SCRIPTS = [
-    "gold/01_create_gold_dimensions.sql",
-    "gold/02_create_gold_facts.sql",
-    "gold/03_load_dim_date.sql",
-    "gold/04_load_gold_dimensions.sql",
-    "gold/05_load_gold_facts.sql",
     "gold/06_create_gold_population_reference.sql",
     "gold/07_load_gold_population_reference.sql",
     "gold/08_create_gold_population_age_sex.sql",
@@ -107,9 +98,7 @@ def print_row_counts(schema: str, tables: list[str]) -> None:
 
 def print_gold_summary() -> None:
     print_row_counts("gold", [
-        "Dim_Date", "Dim_Patient", "Dim_Company", "Dim_Question",
         "Dim_District_Population", "Dim_Population_By_Age_Sex",
-        "Fact_Patient_Registration", "Fact_Screening_Response",
         "Fact_HDC_Pop_Age", "Fact_HDC_Incidence", "Fact_HDC_Death_Age",
         "Fact_DDS_Disease_Ranking", "Fact_Lat_Krabang_Population", "Fact_Lat_Krabang_Deaths",
         "Dim_Lat_Krabang_POI",
@@ -133,23 +122,18 @@ def print_reference_summary() -> None:
     print_row_counts("silver", [
         "hdc_disease_pop_age", "hdc_disease_incidence", "hdc_disease_death_age",
         "dds_yearly_disease_ranking", "lat_krabang_population_by_subdistrict",
-        "lat_krabang_points_of_interest", "kmch_catchment_places",
+        "lat_krabang_deaths_by_subdistrict", "lat_krabang_points_of_interest", "kmch_catchment_places",
         "other_health_disease_cases", "other_health_subdistrict_cases",
         "other_health_sick_by_group", "other_health_disease_by_year",
     ])
 
 
 def main() -> None:
-    wait_for_mysql(SOURCE_HOST, SOURCE_PORT, SOURCE_USER, SOURCE_PASSWORD, "source-db")
     wait_for_mysql(DWH_HOST, DWH_PORT, DWH_USER, DWH_PASSWORD, "warehouse-db")
 
     print("\n=== BRONZE: create tables ===")
     for script in BRONZE_SCRIPTS:
         run_sql_file(script)
-
-    print("\n=== BRONZE: extract from source, load raw replicas ===")
-    import extract_load_bronze
-    extract_load_bronze.run()
 
     print("\n=== BRONZE: load external population reference files ===")
     import extract_load_external_reference

@@ -5,6 +5,12 @@ model development. For BI dashboards, see the main [README.md](../README.md)
 instead — this doc skips the Metabase setup wizard and goes straight to a
 database connection.
 
+**This warehouse has no clinic/patient data.** Everything in it is
+externally-sourced reference and health-surveillance data — population
+statistics, disease surveillance exports, local-area tables — not a
+hospital's own records. Keep that in mind when deciding what a model
+trained on this data can and can't claim.
+
 ## 1. Clone and configure
 
 ```powershell
@@ -16,17 +22,22 @@ Copy-Item .env.example .env
 Open `.env` and change the `ChangeMe_*` passwords if this will run anywhere
 other than your own laptop.
 
-**One manual step before the first run:** `external-sources/dopa/stat_t.txt`
-(50MB) is gitignored — it has no stable re-fetch URL since it came from a
-manually-downloaded Google Drive folder, not a public API. Get this file
-from whoever shared the repo with you and place it at that exact path. If
-you skip this, every other table still loads fine; only the DOPA
-population-reference step fails.
+**Manual steps before the first run** — these files are gitignored and
+must be re-obtained from whoever shared the repo with you:
+- `external-sources/dopa/stat_t.txt` (50MB, DOPA population data) — skip
+  it and every other table still loads fine; only the DOPA population
+  step fails.
+- `external-sources/hdc_by_age/`, `external-sources/hdc_occupational/`,
+  `external-sources/dds_extracted/`, `external-sources/dds_pdf_inventory/`,
+  `external-sources/lat_krabang/` — these carry the HDC/DDS usage-rights
+  caveat described in §4 below. Get explicit confirmation on redistribution
+  rights before pulling these into anything beyond your own local copy of
+  this warehouse.
 
 ## 2. Start the warehouse and run the pipeline
 
 ```powershell
-docker compose up -d source-db warehouse-db
+docker compose up -d warehouse-db
 docker compose run --rm elt-runner
 ```
 
@@ -57,77 +68,68 @@ engine = create_engine(
     "mysql+pymysql://metabase_ro:ChangeMe_Metabase_Ro_2026!@localhost:3308/gold"
 )
 
-patients = pd.read_sql("SELECT * FROM Dim_Patient", engine)
-screening = pd.read_sql("SELECT * FROM Fact_Screening_Response", engine)
-registrations = pd.read_sql("SELECT * FROM Fact_Patient_Registration", engine)
+population = pd.read_sql("SELECT * FROM Dim_District_Population", engine)
+hdc_incidence = pd.read_sql("SELECT * FROM Fact_HDC_Incidence", engine)
+dds_ranking = pd.read_sql("SELECT * FROM Fact_DDS_Disease_Ranking", engine)
 ```
-
-### Why `metabase_ro` and not a new account
-
-It's tempting to provision a separate, broader credential for ad-hoc
-feature engineering. We deliberately didn't: `bronze` and `silver` both
-still carry raw identifiers (`id_card`, `passport_id`, `tel_no`, `email`,
-`address`) for operational traceability, so any account with `SELECT` on
-those schemas is a PII access decision, not just a convenience. `gold.*`
-is the one schema that's already been deliberately stripped of direct
-identifiers (see `Dim_Patient` in
-[02_data_dictionary.md](02_data_dictionary.md)) — so `metabase_ro`,
-read-only and Gold-only, is the credential that's safe to hand to a second
-team by default. If you find Gold too coarse for a specific modeling task
-and need raw Silver/Bronze fields, raise that explicitly with whoever owns
-this data rather than treating it as a blocker to work around.
 
 ## 4. What you can model with this data
 
 | Gold table | What it gives you |
 |---|---|
-| `Dim_Patient` | Demographics: sex, age/age_band, patient_type (employee/student/corporate/external), has_underlying_disease, resolved geography (district/province), is_geo_ambiguous |
-| `Dim_Company` | Corporate cohort membership |
-| `Dim_Question` | The 8 pre-procedure screening questions (bilingual text) |
-| `Dim_District_Population` | Resident population by district, 1993–2020 — a denominator for any per-capita/catchment feature |
-| `Fact_Patient_Registration` | 1 row per patient — registration date, company |
-| `Fact_Screening_Response` | 1 row per (patient × screening visit × question) — `is_flagged` is a natural binary classification target |
+| `Dim_District_Population` | District population time series, 1993–2020 (treat pre-1997 as a separate era — see §5) |
+| `Dim_Population_By_Age_Sex` | National + 3-province age×sex population pyramid, single year (2024) |
+| `Fact_HDC_Pop_Age` / `Fact_HDC_Incidence` / `Fact_HDC_Death_Age` | Chronic disease (diabetes, hypertension, COPD, coronary, cancers) burden by age group, **2022–2026** — the one genuinely multi-year series in this warehouse, good for trend/forecast tasks. ⚠ Restricted use, see below. |
+| `Fact_DDS_Disease_Ranking` | Top-ranked diseases by province, single year (2025) — not a trend table. ⚠ Restricted use, see below. |
+| `Fact_Lat_Krabang_Population` / `Fact_Lat_Krabang_Deaths` | Population/deaths by subdistrict — only 6 subdistricts, too small for anything beyond description |
+| `Dim_Lat_Krabang_POI` | Points of interest (schools, hospitals, businesses, risk points) — categorical/count features for a local-area model |
 
-**A natural first model**: predict `is_flagged` (did this patient trigger a
-safety-screening flag) from `Dim_Patient` demographics
-(age_band, sex, patient_type, has_underlying_disease, district/province).
-Join `Fact_Screening_Response` to `Dim_Patient` and `Dim_Question`, pivot or
-filter to the question(s) you care about, and you have a labeled dataset.
+**A natural first model**: forecast next-year incidence for a chronic
+disease using `Fact_HDC_Incidence`'s 2022–2026 series — the only table
+here with enough time points for a real trend task rather than a
+single-snapshot description.
 
 ```python
 df = pd.read_sql("""
-    SELECT dp.sex, dp.age, dp.age_band, dp.patient_type_desc,
-           dp.has_underlying_disease, dp.province_name_en,
-           dq.question_text_en, f.is_flagged
-    FROM Fact_Screening_Response f
-    JOIN Dim_Patient dp ON dp.patient_sk = f.patient_sk
-    JOIN Dim_Question dq ON dq.question_sk = f.question_sk
+    SELECT disease, province_name_en, year_ce, target, result, achievement_rate_pct
+    FROM Fact_HDC_Incidence
+    ORDER BY disease, province_name_en, year_ce
 """, engine)
 ```
 
-## 5. Known limitations — read before trusting a model
+## 5. ⚠ Usage-rights restriction — read before training or publishing
 
-- **Small sample**: 376 patients total. Fine for prototyping a pipeline,
-  not enough to claim a generalizable model. Treat any result as a proof
-  of concept.
-- **Severe class imbalance on `is_flagged`**: flag rates per question run
-  0.5%–1.6% (see the example query in
-  [02_data_dictionary.md](02_data_dictionary.md#5-example-executive-kpi-queries-metabase-ready)).
-  A naive "always predict no" baseline will look deceptively strong on
-  accuracy — use precision/recall or PR-AUC, not accuracy, to evaluate.
-- **`Dim_Company` / corporate cohort is empty in practice**: the source
-  `Company_Employee` table has 0 rows even though `patient_type` claims
-  some patients are `company_employee`. Any feature depending on real
-  corporate linkage will be all-NULL/zero right now — this is a source
-  data-integrity gap, not a bug in this pipeline.
-- **Geography resolves to NULL for ~1% of patients**: either a missing zip
-  code or an invalid one (one patient has a 6-digit value, which isn't a
-  valid Thai postal code). Don't silently drop these rows without checking
-  whether that biases your sample.
-- **Population denominator is stale**: `Dim_District_Population`'s latest
-  year is 2020 (CE), six years behind current when this pipeline was
-  built. Fine for structural features (which district is bigger than
-  which), not for anything claiming current-year precision.
-- **This is seeded/demo data**, not real patient records from production —
-  don't treat any descriptive statistic here as representative of the
-  actual clinic population.
+`Fact_HDC_*` and `Fact_DDS_Disease_Ranking` are built from data whose
+redistribution rights are **not confirmed with the data owner** (see
+[03_external_reference_sources.md](03_external_reference_sources.md)).
+Pulling this data into your own notebook for local exploration is the
+same use the warehouse owner already accepted the risk for. **Publishing
+a model trained on it, or sharing derived statistics outside this local
+environment, is a step beyond that** — raise it with whoever owns this
+data before doing either, don't treat it as a technical question to work
+around.
+
+## 6. Known limitations — read before trusting a model
+
+- **HDC age groups have no documented numeric boundaries.** The source
+  system's own age_group1–5 codes aren't explained anywhere in the
+  export. Ordering strongly suggests youngest→oldest (Group 5 has the
+  highest disease burden across every chronic condition, consistent with
+  age being a real risk factor), but that's an inference, not confirmed
+  from the source.
+- **HDC data covers Samut Prakan and Chachoengsao only** — no Bangkok,
+  despite the source folder being named `HDC_region6_13...`. Don't filter
+  for `province_code=10` and get confused by an empty result.
+- **DDS ranking is a single year (2025).** There's no DDS time series in
+  this warehouse — don't build a trend feature from it.
+- **`Dim_District_Population`'s pre-1997 rows are a different data era.**
+  The source changed its registration-office coding scheme around
+  1996/1997, producing a ~10x population discontinuity that's a genuine
+  source artifact, not noise. Any model using this as a time series
+  should filter to `year_ce >= 1997` or explicitly handle the break.
+- **Population denominator is otherwise stale**: `Dim_District_Population`'s
+  latest year is 2020. Fine for structural features (which district is
+  bigger than which), not for anything claiming current-year precision.
+- **This is a manually-curated extract**, not a live feed. "Freshness"
+  means "as of whenever someone last downloaded the Drive folder," which
+  for most of these tables was 2026-10.
