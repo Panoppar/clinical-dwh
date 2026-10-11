@@ -1,0 +1,11 @@
+# Secrets — never commit real credentials, only .env.example
+.env
+
+# DOPA source file: 50MB, came from a manually-downloaded Google Drive
+# folder with no simple re-fetch URL. Too large for git; see
+# docs/03_external_reference_sources.md for how to re-obtain it.
+external-sources/dopa/stat_t.txt
+
+# OS/editor noise
+.DS_Store
+Thumbs.db

@@ -1,0 +1,116 @@
+name: vaccinework-dwh
+
+# ============================================================================
+# VaccineWork Medallion Data Warehouse — local orchestration
+#
+#   source-db     : OLTP replica of the healthcare portal (vaccinework)
+#   warehouse-db  : MySQL DWH hosting the bronze / silver / gold schemas
+#   elt-runner    : one-shot Python job that executes the Bronze -> Silver ->
+#                   Gold pipeline, then exits (run again any time with
+#                   `docker compose run --rm elt-runner`)
+#   metabase      : BI tool, connects ONLY to warehouse-db.gold
+# ============================================================================
+
+services:
+
+  source-db:
+    image: mysql:8.0
+    container_name: vw-source-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${SOURCE_DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${SOURCE_DB_NAME}
+      MYSQL_USER: ${SOURCE_DB_USER}
+      MYSQL_PASSWORD: ${SOURCE_DB_PASSWORD}
+      TZ: Asia/Bangkok
+    ports:
+      - "${SOURCE_DB_HOST_PORT}:3306"
+    volumes:
+      - source_db_data:/var/lib/mysql
+      # Dump auto-executes on first container boot (docker-entrypoint-initdb.d)
+      - ./source-db/init:/docker-entrypoint-initdb.d:ro
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${SOURCE_DB_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - vw-net
+
+  warehouse-db:
+    image: mysql:8.0
+    container_name: vw-warehouse-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DWH_DB_ROOT_PASSWORD}
+      MYSQL_USER: ${DWH_DB_USER}
+      MYSQL_PASSWORD: ${DWH_DB_PASSWORD}
+      TZ: Asia/Bangkok
+    ports:
+      - "${DWH_DB_HOST_PORT}:3306"
+    volumes:
+      - warehouse_db_data:/var/lib/mysql
+      # Bootstraps empty bronze/silver/gold schemas + grants on first boot
+      - ./sql/00_init_schemas_and_grants.sql:/docker-entrypoint-initdb.d/00_init_schemas_and_grants.sql:ro
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DWH_DB_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - vw-net
+
+  elt-runner:
+    build:
+      context: ./pipeline
+    container_name: vw-elt-runner
+    environment:
+      SOURCE_DB_HOST: ${SOURCE_DB_HOST}
+      SOURCE_DB_PORT: ${SOURCE_DB_PORT}
+      SOURCE_DB_NAME: ${SOURCE_DB_NAME}
+      SOURCE_DB_USER: root
+      SOURCE_DB_PASSWORD: ${SOURCE_DB_ROOT_PASSWORD}
+      DWH_DB_HOST: ${DWH_DB_HOST}
+      DWH_DB_PORT: ${DWH_DB_PORT}
+      DWH_DB_USER: root
+      DWH_DB_PASSWORD: ${DWH_DB_ROOT_PASSWORD}
+    volumes:
+      - ./sql:/app/sql:ro
+      - ./external-sources:/app/external-sources:ro
+    depends_on:
+      source-db:
+        condition: service_healthy
+      warehouse-db:
+        condition: service_healthy
+    networks:
+      - vw-net
+    # No `restart` on purpose: this is a run-to-completion batch job, not a daemon.
+    profiles: ["etl"]
+
+  metabase:
+    image: metabase/metabase:v0.50.19
+    container_name: vw-metabase
+    restart: unless-stopped
+    ports:
+      - "${METABASE_HOST_PORT}:3000"
+    environment:
+      MB_JETTY_PORT: ${MB_JETTY_PORT}
+      JAVA_TIMEZONE: Asia/Bangkok
+    volumes:
+      - metabase_data:/metabase-data
+    depends_on:
+      warehouse-db:
+        condition: service_healthy
+    networks:
+      - vw-net
+
+networks:
+  vw-net:
+    driver: bridge
+
+volumes:
+  source_db_data:
+  warehouse_db_data:
+  metabase_data:
