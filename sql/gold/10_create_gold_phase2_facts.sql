@@ -50,7 +50,12 @@ CREATE TABLE `Fact_DDS_Disease_Ranking` (
   `year_ce` INT NOT NULL, `disease_th` VARCHAR(100) NOT NULL,
   `case_count` BIGINT, `case_fatality_pct` DECIMAL(6,2), `death_count` BIGINT,
   `rate_per_100k` DECIMAL(10,2), `rank_by_cases` INT, `is_provisional` TINYINT(1),
-  KEY `ix_fddr_province` (`province_code`), KEY `ix_fddr_disease` (`disease_th`)
+  -- 1 = rollup category that double-counts its own subtypes in this same
+  -- list (e.g. "ไข้เลือดออกรวม" vs "ไข้เด็งกี" + "ไข้เลือดออก").
+  -- Add `AND is_aggregate_row = 0` before any SUM(case_count) by province.
+  `is_aggregate_row` TINYINT(1) NOT NULL DEFAULT 0,
+  KEY `ix_fddr_province` (`province_code`), KEY `ix_fddr_disease` (`disease_th`),
+  KEY `ix_fddr_aggregate` (`is_aggregate_row`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Lat Krabang: unrestricted, same governance status as the rest of Gold.

@@ -129,6 +129,65 @@ or the DOPA bronze/silver load step will fail on a missing file. Everything
 else under `external-sources/` (NSO CSVs, Thai geo CSVs) is small enough to
 commit directly and is in version control.
 
+## Full-project defect audit (2026-10-19)
+
+A systematic audit across row reconciliation, aggregate-row contamination,
+year/type conversion, loader column alignment, Metabase usage, orphaned
+objects, security, and idempotency. Findings:
+
+**Clean (verified, not assumed):**
+- Bronze→Silver row counts reconcile 1:1 for all 8 source pipelines.
+- Silver→Gold aggregations preserve sums exactly (spot-checked 5 measures);
+  no join fan-out — `thai_geography` has no province_code or district_code
+  mapping to more than one English name.
+- No BE/CE year leakage; every year field lands in a plausible CE range.
+- Zero numeric parse failures — every non-null source value survives to
+  Silver. `investment_thb` correctly uses `DECIMAL` (an `INT` would have
+  overflowed on the 122-billion-THB max value).
+- Loader column counts match real source headers for all 19 HDC files, all
+  9 Lat Krabang files, and all 4 KMCH shapes; a specific known source row
+  was traced end-to-end to confirm no column shift.
+- Every Gold table is referenced by at least one Metabase card; no
+  orphaned SQL files; `.env` and all restricted data stay untracked.
+- **Pipeline is genuinely idempotent** — two consecutive full runs produce
+  byte-identical exact row counts across all three schemas.
+
+**Defects found and fixed — the "pre-summed total mixed into detail rows"
+class, same as the NSO 2x and Lat Krabang `รวม` issues:**
+1. `other_health_disease_cases` carried a `รวมทั้งหมด (ยอดจริง)` grand-total
+   row equal to the detail sum — unfiltered `SUM()` returned exactly 2x
+   (110,108 vs true 55,054).
+2. `other_health_sick_by_group` carried `รวม` total rows per
+   (province, sex, year) — also exactly 2x (4,791,542 vs true 2,395,771).
+3. `dds_yearly_disease_ranking` ranks rollup categories alongside their own
+   subtypes (dengue combined vs. its two components) — a latent 9,575-case
+   over-count on any province total.
+
+All three now carry an `is_aggregate_row` flag rather than being deleted —
+the rollup row is the right figure to quote for a category total, and the
+subtypes are right for a breakdown; they just must not be mixed in one
+aggregate.
+
+**One false positive, deliberately not "fixed":**
+`โรคไข้เลือดออกรวม (DF+DHF+DSS)` in `other_health_disease_by_year` contains
+`รวม` but has **no** separate subtype rows in that table — it's a single
+legitimate disease entry, so flagging it would have been wrong.
+
+**Zombie tables removed:** `silver.zip_code_admin_crosswalk` and
+`silver.zip_code_primary_district` existed in the live warehouse with data
+but had **no DDL backing them in version control** — when they were
+removed with the clinic pipeline, the `CREATE` *and* the `DROP` were
+deleted together, so any warehouse that had already built them kept them
+forever: invisible to code, never refreshed, and absent on a fresh clone.
+Defensive `DROP`s were added so the live schema converges back to the code.
+
+**Known gap, not a defect:** five Silver tables (`kmch_catchment_places`,
+`other_health_disease_by_year`, `other_health_disease_cases`,
+`other_health_sick_by_group`, `other_health_subdistrict_cases`) are
+cleansed but never promoted to Gold, so Metabase cannot see them. That's a
+scope decision rather than a bug, but it means that data is currently
+loaded and paid for without being usable in the BI layer.
+
 ## Clinic/patient data removal (2026-10-19)
 
 A zip-code ↔ Thai admin-code crosswalk (`silver.zip_code_admin_crosswalk`,

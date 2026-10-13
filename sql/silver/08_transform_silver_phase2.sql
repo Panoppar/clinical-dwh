@@ -55,6 +55,11 @@ SELECT
   CAST(NULLIF(TRIM(rank_by_cases), '') AS SIGNED),
   CAST(NULLIF(TRIM(implied_population), '') AS DECIMAL(15,2)),
   IF(LOWER(TRIM(is_provisional)) = 'true', 1, 0),
+  -- Rollup categories end in "รวม" (combined) and double-count their own
+  -- subtypes, which appear as separate ranked rows in the same list.
+  -- Anchored to the END of the name so it doesn't catch diseases that
+  -- merely contain รวม mid-string.
+  IF(TRIM(disease) LIKE '%รวม', 1, 0),
   note
 FROM bronze.dds_yearly_disease_ranking;
 
@@ -128,7 +133,8 @@ FROM bronze.kmch_catchment_places;
 -- Other health & population tables
 -- ---------------------------------------------------------------------------
 INSERT INTO other_health_disease_cases
-SELECT TRIM(disease_th), CAST(REPLACE(count_2567,',','') AS SIGNED), CAST(REPLACE(count_2568,',','') AS SIGNED), CAST(REPLACE(diff,',','') AS SIGNED)
+SELECT TRIM(disease_th), CAST(REPLACE(count_2567,',','') AS SIGNED), CAST(REPLACE(count_2568,',','') AS SIGNED), CAST(REPLACE(diff,',','') AS SIGNED),
+  IF(TRIM(disease_th) LIKE 'รวมทั้งหมด%', 1, 0)
 FROM bronze.other_health_disease_cases WHERE disease_th IS NOT NULL;
 
 INSERT INTO other_health_subdistrict_cases
@@ -139,7 +145,8 @@ INSERT INTO other_health_sick_by_group
 SELECT
   CAST(NULLIF(TRIM(year_be), '') AS SIGNED) - 543, TRIM(province_th), TRIM(disease_group_th),
   CASE TRIM(sex_th) WHEN 'ชาย' THEN 'male' WHEN 'หญิง' THEN 'female' ELSE TRIM(sex_th) END,
-  CAST(REPLACE(count, ',', '') AS SIGNED)
+  CAST(REPLACE(count, ',', '') AS SIGNED),
+  IF(TRIM(disease_group_th) = 'รวม', 1, 0)
 FROM bronze.other_health_sick_by_group WHERE year_be IS NOT NULL;
 
 INSERT INTO other_health_disease_by_year

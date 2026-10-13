@@ -152,6 +152,7 @@ province. **Single year only (2025)** — not a trend table.
 | `rate_per_100k` | `DECIMAL(10,2)` | Normalized rate — use this, not raw `case_count`, when comparing provinces of different sizes |
 | `rank_by_cases` | `INT` | 1 = most cases that year in that province |
 | `is_provisional` | `TINYINT(1)` | |
+| `is_aggregate_row` | `TINYINT(1)` | `1` = a rollup category that **double-counts its own subtypes in this same table**. e.g. Bangkok has `ไข้เลือดออกรวม` (dengue combined, 7,551) ranked alongside `ไข้เด็งกี` (5,157) and `ไข้เลือดออก` (2,363). **Add `AND is_aggregate_row = 0` before any `SUM(case_count)` grouped by province.** Currently affects 4 rows (dengue in all 3 provinces, measles in Chachoengsao); they rank below 5 so the existing top-5 dashboard card is unaffected, but a top-10/20 view or a province total would be wrong. |
 
 ## ⚠ Restricted-data note
 

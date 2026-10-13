@@ -11,6 +11,16 @@
 
 USE silver;
 
+-- Legacy cleanup: these two tables were dropped from this project along
+-- with the clinic pipeline, but an earlier edit removed their CREATE *and*
+-- their DROP at the same time -- so any warehouse that had already built
+-- them kept them forever as zombie tables: present in the database, absent
+-- from version control, and never refreshed by a pipeline run. These DROPs
+-- make the live schema converge back to the code. Safe to delete once no
+-- warehouse built before 2026-10 is still in use.
+DROP TABLE IF EXISTS `zip_code_primary_district`;
+DROP TABLE IF EXISTS `zip_code_admin_crosswalk`;
+
 DROP TABLE IF EXISTS `thai_geography`;
 
 CREATE TABLE `thai_geography` (

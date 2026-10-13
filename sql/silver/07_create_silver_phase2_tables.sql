@@ -48,12 +48,21 @@ CREATE TABLE `hdc_disease_death_age` (
   KEY `ix_shda_disease` (`disease`), KEY `ix_shda_areacode` (`areacode`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- is_aggregate_row: this ranking list mixes rollup disease categories with
+-- their own subtypes. e.g. Bangkok carries "ไข้เลือดออกรวม" (dengue
+-- COMBINED, 7,551) alongside "ไข้เด็งกี" (5,157) and "ไข้เลือดออก" (2,363)
+-- as separate ranked rows -- so SUM(case_count) GROUP BY province counts
+-- those dengue cases twice. Flagged rather than deleted, since the rollup
+-- row is the right figure to quote for "total dengue" and the subtypes are
+-- right for a breakdown -- you just must not mix them in one aggregate.
 CREATE TABLE `dds_yearly_disease_ranking` (
   `province_code` VARCHAR(10), `province_name_th` VARCHAR(100), `year_ce` INT,
   `disease_th` VARCHAR(100), `case_count` INT, `case_fatality_pct` DECIMAL(6,2),
   `death_count` INT, `rate_per_100k` DECIMAL(10,2), `rank_by_cases` INT,
-  `implied_population` DECIMAL(15,2), `is_provisional` TINYINT(1), `note` TEXT,
-  KEY `ix_sdyr_province` (`province_code`), KEY `ix_sdyr_disease` (`disease_th`)
+  `implied_population` DECIMAL(15,2), `is_provisional` TINYINT(1),
+  `is_aggregate_row` TINYINT(1) NOT NULL DEFAULT 0, `note` TEXT,
+  KEY `ix_sdyr_province` (`province_code`), KEY `ix_sdyr_disease` (`disease_th`),
+  KEY `ix_sdyr_aggregate` (`is_aggregate_row`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Lat Krabang: population/deaths kept distinct (different grain, both
@@ -94,8 +103,14 @@ CREATE TABLE `kmch_catchment_places` (
   KEY `ix_skcp_category` (`category`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- is_aggregate_row: source carries a "รวมทั้งหมด (ยอดจริง)" (grand total,
+-- actual figure) row alongside the per-disease detail rows -- it equals the
+-- detail sum exactly (55,054 for BE2567), so an unfiltered SUM() returns
+-- precisely 2x.
 CREATE TABLE `other_health_disease_cases` (
-  `disease_th` VARCHAR(200) NOT NULL, `count_2567` INT, `count_2568` INT, `diff` INT
+  `disease_th` VARCHAR(200) NOT NULL, `count_2567` INT, `count_2568` INT, `diff` INT,
+  `is_aggregate_row` TINYINT(1) NOT NULL DEFAULT 0,
+  KEY `ix_sohdc_aggregate` (`is_aggregate_row`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `other_health_subdistrict_cases` (
@@ -103,9 +118,14 @@ CREATE TABLE `other_health_subdistrict_cases` (
   `count_2567` INT, `count_2568` INT, `diff` INT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- is_aggregate_row: source carries "รวม" (total) rows per (province, sex,
+-- year) alongside the per-disease-group detail -- unfiltered SUM() is
+-- exactly 2x (verified: male 2,000,684 vs 1,000,342 true).
 CREATE TABLE `other_health_sick_by_group` (
   `year_ce` INT, `province_th` VARCHAR(100), `disease_group_th` VARCHAR(200),
-  `sex` VARCHAR(10), `count` INT
+  `sex` VARCHAR(10), `count` INT,
+  `is_aggregate_row` TINYINT(1) NOT NULL DEFAULT 0,
+  KEY `ix_sohsg_aggregate` (`is_aggregate_row`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `other_health_disease_by_year` (

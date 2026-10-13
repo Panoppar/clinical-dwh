@@ -79,11 +79,13 @@ GROUP BY disease, s.province_code, prov.province_name_en, year_ce;
 
 INSERT INTO Fact_DDS_Disease_Ranking (
   province_code, province_name_en, province_name_th, year_ce, disease_th,
-  case_count, case_fatality_pct, death_count, rate_per_100k, rank_by_cases, is_provisional
+  case_count, case_fatality_pct, death_count, rate_per_100k, rank_by_cases,
+  is_provisional, is_aggregate_row
 )
 SELECT
   CAST(d.province_code AS UNSIGNED), prov.province_name_en, d.province_name_th, d.year_ce, d.disease_th,
-  d.case_count, d.case_fatality_pct, d.death_count, d.rate_per_100k, d.rank_by_cases, d.is_provisional
+  d.case_count, d.case_fatality_pct, d.death_count, d.rate_per_100k, d.rank_by_cases,
+  d.is_provisional, d.is_aggregate_row
 FROM silver.dds_yearly_disease_ranking d
 LEFT JOIN (SELECT DISTINCT province_code, province_name_en FROM silver.thai_geography) prov
   ON prov.province_code = CAST(d.province_code AS UNSIGNED);

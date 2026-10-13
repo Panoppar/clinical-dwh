@@ -57,6 +57,22 @@ you compute looks roughly double a plausible real-world figure, this is
 almost certainly why; sanity-check totals against known real-world
 population before reporting them as findings.
 
+**The same trap exists in three more places.** These sources mix
+pre-summed rollup rows into their detail rows, so each carries an
+`is_aggregate_row` flag — add `AND is_aggregate_row = 0` before any
+`SUM()`:
+
+| table | what the rollup row is |
+|---|---|
+| `Fact_DDS_Disease_Ranking` (gold) | rollup disease categories ranked alongside their own subtypes (dengue combined vs. its components) |
+| `silver.other_health_disease_cases` | a `รวมทั้งหมด` grand-total row |
+| `silver.other_health_sick_by_group` | `รวม` total rows per province/sex/year |
+
+General rule for this warehouse: **before reporting any aggregate as a
+finding, sanity-check it against a known real-world figure.** Several of
+these datasets ship totals and components in the same table, and the
+failure mode is a silent exact-2x rather than an error.
+
 ## Governance constraints you must enforce, not just mention
 
 - **HDC and DDS data carry an unconfirmed-redistribution-rights caveat**
