@@ -8,10 +8,9 @@ Each layer is a full refresh: every *.sql script in sql/<layer>/ drops and
 recreates its own tables, so reruns are idempotent — there is no manual
 cleanup step between runs.
 
-This warehouse is built entirely from externally-sourced reference data
-(DOPA/NSO population, HDC/DDS health surveillance, Lat Krabang/KMCH
-local-area data) from the shared Drive folder -- there is no clinic/
-patient source system feeding it.
+Rebuilt from scratch on 2026-10-13 against the reorganized
+share_unprocessed_20261010 folder. Sources are added one at a time; see
+docs/03_external_reference_sources.md for progress.
 """
 
 import os
@@ -31,31 +30,12 @@ DWH_PASSWORD = os.environ["DWH_DB_PASSWORD"]
 
 # Execution order matters: each layer's DDL must run before its DML, and
 # Gold DDL/DML order matters because facts carry FKs into dimensions.
-BRONZE_SCRIPTS = [
-    "bronze/02_create_bronze_external_reference_tables.sql",
-    "bronze/03_create_bronze_thai_geo_tables.sql",
-    "bronze/04_create_bronze_hdc_dds_tables.sql",
-    "bronze/05_create_bronze_lat_krabang_tables.sql",
-    "bronze/06_create_bronze_kmch_other_health_tables.sql",
+# Filled in source-by-source as each one is built.
+BRONZE_SCRIPTS: list[str] = [
+    "bronze/01_create_bronze_dopa_tables.sql",
 ]
-SILVER_SCRIPTS = [
-    "silver/03_create_silver_reference_tables.sql",
-    "silver/04_transform_silver_reference.sql",
-    "silver/05_create_silver_crosswalk_tables.sql",
-    "silver/06_transform_silver_crosswalk.sql",
-    "silver/07_create_silver_phase2_tables.sql",
-    "silver/08_transform_silver_phase2.sql",
-]
-GOLD_SCRIPTS = [
-    "gold/06_create_gold_population_reference.sql",
-    "gold/07_load_gold_population_reference.sql",
-    "gold/08_create_gold_population_age_sex.sql",
-    "gold/09_load_gold_population_age_sex.sql",
-    "gold/10_create_gold_phase2_facts.sql",
-    "gold/11_load_gold_phase2_facts.sql",
-    "gold/12_create_gold_local_health_facts.sql",
-    "gold/13_load_gold_local_health_facts.sql",
-]
+SILVER_SCRIPTS: list[str] = []
+GOLD_SCRIPTS: list[str] = []
 
 
 def wait_for_mysql(host: str, port: int, user: str, password: str, label: str, timeout_s: int = 60) -> None:
@@ -98,37 +78,9 @@ def print_row_counts(schema: str, tables: list[str]) -> None:
     conn.close()
 
 
-def print_gold_summary() -> None:
-    print_row_counts("gold", [
-        "Dim_District_Population", "Dim_Population_By_Age_Sex",
-        "Fact_HDC_Pop_Age", "Fact_HDC_Incidence", "Fact_HDC_Death_Age",
-        "Fact_DDS_Disease_Ranking", "Fact_Lat_Krabang_Population", "Fact_Lat_Krabang_Deaths",
-        "Dim_Lat_Krabang_POI",
-        "Fact_Disease_Case_Trend", "Fact_Subdistrict_Case_Trend",
-        "Fact_Morbidity_By_Group", "Fact_Disease_Annual_Count", "Dim_Catchment_Place",
-    ])
-
-
-def print_reference_summary() -> None:
-    print_row_counts("bronze", ["dopa_population_monthly", "nso_population_registration"])
-    print_row_counts("silver", ["population_reference_subdistrict", "population_reference_age_sex"])
+def print_bronze_summary() -> None:
     print_row_counts("bronze", [
-        "hdc_disease_pop_age", "hdc_disease_incidence", "hdc_disease_death_age",
-        "dds_yearly_disease_ranking", "dds_unit_indicator_snapshot", "hdc_occupational_health",
-        "dds_pdf_report_inventory", "kmch_catchment_places",
-        "other_health_disease_cases", "other_health_subdistrict_cases",
-        "other_health_sick_by_group", "other_health_disease_by_year",
-        "lat_krabang_population_by_subdistrict", "lat_krabang_deaths_by_subdistrict",
-        "lat_krabang_universities", "lat_krabang_vocational_colleges", "lat_krabang_schools",
-        "lat_krabang_risk_points", "lat_krabang_religious_sites", "lat_krabang_businesses",
-        "lat_krabang_hospitals",
-    ])
-    print_row_counts("silver", [
-        "hdc_disease_pop_age", "hdc_disease_incidence", "hdc_disease_death_age",
-        "dds_yearly_disease_ranking", "lat_krabang_population_by_subdistrict",
-        "lat_krabang_deaths_by_subdistrict", "lat_krabang_points_of_interest", "kmch_catchment_places",
-        "other_health_disease_cases", "other_health_subdistrict_cases",
-        "other_health_sick_by_group", "other_health_disease_by_year",
+        "dopa_population_by_area_month", "dopa_source_file_registry", "dopa_metadata_file_registry",
     ])
 
 
@@ -139,24 +91,21 @@ def main() -> None:
     for script in BRONZE_SCRIPTS:
         run_sql_file(script)
 
-    print("\n=== BRONZE: load external population reference files ===")
-    import extract_load_external_reference
-    extract_load_external_reference.run()
+    print("\n=== BRONZE: load DOPA population-by-area files ===")
+    import extract_load_dopa
+    extract_load_dopa.run()
 
-    print("\n=== BRONZE: load Phase 2 shared-drive data (HDC/DDS/Lat Krabang/KMCH/other) ===")
-    import extract_load_phase2
-    extract_load_phase2.run()
+    if SILVER_SCRIPTS:
+        print("\n=== SILVER: create tables + transform ===")
+        for script in SILVER_SCRIPTS:
+            run_sql_file(script)
 
-    print("\n=== SILVER: create tables + transform ===")
-    for script in SILVER_SCRIPTS:
-        run_sql_file(script)
+    if GOLD_SCRIPTS:
+        print("\n=== GOLD: create star schema + build dimensions/facts ===")
+        for script in GOLD_SCRIPTS:
+            run_sql_file(script)
 
-    print("\n=== GOLD: create star schema + build dimensions/facts ===")
-    for script in GOLD_SCRIPTS:
-        run_sql_file(script)
-
-    print_reference_summary()
-    print_gold_summary()
+    print_bronze_summary()
     print("\n[pipeline] completed successfully")
 
 
