@@ -53,6 +53,8 @@ GOLD_SCRIPTS = [
     "gold/09_load_gold_population_age_sex.sql",
     "gold/10_create_gold_phase2_facts.sql",
     "gold/11_load_gold_phase2_facts.sql",
+    "gold/12_create_gold_local_health_facts.sql",
+    "gold/13_load_gold_local_health_facts.sql",
 ]
 
 
@@ -102,6 +104,8 @@ def print_gold_summary() -> None:
         "Fact_HDC_Pop_Age", "Fact_HDC_Incidence", "Fact_HDC_Death_Age",
         "Fact_DDS_Disease_Ranking", "Fact_Lat_Krabang_Population", "Fact_Lat_Krabang_Deaths",
         "Dim_Lat_Krabang_POI",
+        "Fact_Disease_Case_Trend", "Fact_Subdistrict_Case_Trend",
+        "Fact_Morbidity_By_Group", "Fact_Disease_Annual_Count", "Dim_Catchment_Place",
     ])
 
 

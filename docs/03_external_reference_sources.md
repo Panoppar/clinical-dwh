@@ -181,12 +181,42 @@ deleted together, so any warehouse that had already built them kept them
 forever: invisible to code, never refreshed, and absent on a fresh clone.
 Defensive `DROP`s were added so the live schema converges back to the code.
 
-**Known gap, not a defect:** five Silver tables (`kmch_catchment_places`,
-`other_health_disease_by_year`, `other_health_disease_cases`,
-`other_health_sick_by_group`, `other_health_subdistrict_cases`) are
-cleansed but never promoted to Gold, so Metabase cannot see them. That's a
-scope decision rather than a bug, but it means that data is currently
-loaded and paid for without being usable in the BI layer.
+**Gap now closed (2026-10-19):** the five Silver tables that were cleansed
+but never promoted are now in Gold — see
+[02_data_dictionary.md §6](02_data_dictionary.md). The two that stored
+years as columns were pivoted to long format rather than copied wide.
+
+### A fourth aggregate-row defect — and a gap in the audit that found the others
+
+Promoting those tables surfaced one more instance of the same class, in
+`other_health_subdistrict_cases`. **My earlier scan missed it** because
+the total marker sits in the `district_th` column with an *empty*
+`subdistrict_th` — I had only scanned `subdistrict_th` for that table.
+The 10 detail rows sum to exactly the total (55,054), so it was another
+silent 2x.
+
+Worse, the "exhaustive" re-scan I wrote to catch this initially returned
+**clean** — a false negative. The Thai regex patterns were being mangled
+passing through nested shell quoting (`bash` loop → `docker exec` →
+`mysql -e "..."`), so the pattern silently matched nothing. A scan that
+reports clean because its pattern never matched is more dangerous than no
+scan at all. Caught it by direct-testing the regex against a row already
+known to match.
+
+The working version lives at
+[`tools/audit_aggregate_row_scan.sql`](../tools/audit_aggregate_row_scan.sql)
+— kept as a reusable check. It builds one dynamic `UNION ALL` over every
+text column in `silver` + `gold` and is run as a **file**, never as a
+shell string, so the Thai patterns are never shell-quoted. Re-run it after
+ingesting any new source:
+
+```powershell
+docker exec -i cdw-warehouse-db mysql --default-character-set=utf8mb4 -uroot -p<pw> < tools/audit_aggregate_row_scan.sql
+```
+
+Its current output is clean apart from four known/handled hits:
+`sex='Total'` and `age_qualifier='total'` in the population tables (both
+legitimate dimension values, documented), and the already-flagged rollups.
 
 ## Clinic/patient data removal (2026-10-19)
 

@@ -113,9 +113,17 @@ CREATE TABLE `other_health_disease_cases` (
   KEY `ix_sohdc_aggregate` (`is_aggregate_row`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- is_aggregate_row: the grand-total row here puts "รวมทั้งหมด (ยอดจริง)" in
+-- the DISTRICT column with an empty subdistrict -- not in the subdistrict
+-- column where you'd look for it. The 10 detail rows sum to exactly the
+-- total (55,054), so unfiltered SUM() is 2x.
+-- Note "(ไม่ระบุ/ไม่มีแขวง)" ("unspecified / no subdistrict") is a genuine
+-- unknown-value bucket, NOT an aggregate -- it must stay unflagged.
 CREATE TABLE `other_health_subdistrict_cases` (
   `district_th` VARCHAR(100), `subdistrict_th` VARCHAR(100),
-  `count_2567` INT, `count_2568` INT, `diff` INT
+  `count_2567` INT, `count_2568` INT, `diff` INT,
+  `is_aggregate_row` TINYINT(1) NOT NULL DEFAULT 0,
+  KEY `ix_sohsc_aggregate` (`is_aggregate_row`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- is_aggregate_row: source carries "รวม" (total) rows per (province, sex,

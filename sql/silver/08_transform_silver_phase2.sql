@@ -138,7 +138,8 @@ SELECT TRIM(disease_th), CAST(REPLACE(count_2567,',','') AS SIGNED), CAST(REPLAC
 FROM bronze.other_health_disease_cases WHERE disease_th IS NOT NULL;
 
 INSERT INTO other_health_subdistrict_cases
-SELECT TRIM(district_th), TRIM(subdistrict_th), CAST(REPLACE(count_2567,',','') AS SIGNED), CAST(REPLACE(count_2568,',','') AS SIGNED), CAST(REPLACE(diff,',','') AS SIGNED)
+SELECT TRIM(district_th), TRIM(subdistrict_th), CAST(REPLACE(count_2567,',','') AS SIGNED), CAST(REPLACE(count_2568,',','') AS SIGNED), CAST(REPLACE(diff,',','') AS SIGNED),
+  IF(TRIM(district_th) LIKE 'รวมทั้งหมด%', 1, 0)
 FROM bronze.other_health_subdistrict_cases WHERE district_th IS NOT NULL;
 
 INSERT INTO other_health_sick_by_group

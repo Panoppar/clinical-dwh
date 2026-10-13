@@ -190,7 +190,34 @@ type-specific and NULL for other types.
 | `student_num` | `INT` | Only for `poi_type='school'` |
 | `risk_type` | `VARCHAR(10)` | Only for `poi_type='risk_point'` |
 
-## 6. Example queries (Metabase-ready, Gold-only)
+## 6. Local-area health & catchment tables
+
+Promoted to Gold on 2026-10-19 (previously cleansed in Silver but
+invisible to Metabase). The two sources that stored years as *columns*
+(`count_2567` / `count_2568`) are **pivoted to long format** here — one row
+per entity per year, with `year_ce` as an ordinary filterable dimension —
+rather than copied wide.
+
+| Table | Grain | Rows | Notes |
+|---|---|---|---|
+| `Fact_Disease_Case_Trend` | disease × year | 106 | BE2567→CE2024, BE2568→CE2025 |
+| `Fact_Subdistrict_Case_Trend` | district/subdistrict × year | 22 | Lat Krabang, Saphan Sung, Min Buri |
+| `Fact_Morbidity_By_Group` | year × province × disease group × sex | 64 | Samut Prakan; disease groups are ICD-style numbered labels |
+| `Fact_Disease_Annual_Count` | year × disease | 42 | **Different scope** from `Fact_Disease_Case_Trend` — verified not duplicates (2024 influenza: 19,921 here vs 8,297 there) |
+| `Dim_Catchment_Place` | one row per place | 3,742 | Travel distance/time + market-potential label around KMCH |
+
+**`is_aggregate_row` applies to the first three** — add
+`AND is_aggregate_row = 0` before any `SUM(case_count)`. Both case-trend
+tables independently total 55,054 (2024) / 60,076 (2025) once filtered,
+which is a useful cross-check that the pivot is correct: they're the same
+underlying data sliced by disease vs. by subdistrict.
+
+`Dim_Catchment_Place.district_name_en` resolves for 2,604 of 3,742 rows —
+that's **100% of the rows that have a district at all**. The remaining
+1,138 come from source files with no address columns whatsoever, so
+there's nothing to resolve rather than a failed lookup.
+
+## 7. Example queries (Metabase-ready, Gold-only)
 
 ```sql
 -- Catchment coverage: Lat Krabang's population vs. whole-district services
