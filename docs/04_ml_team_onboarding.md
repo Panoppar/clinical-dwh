@@ -78,7 +78,7 @@ dds_ranking = pd.read_sql("SELECT * FROM Fact_DDS_Disease_Ranking", engine)
 | Gold table | What it gives you |
 |---|---|
 | `Dim_District_Population` | District population time series, 1993–2020 (treat pre-1997 as a separate era — see §5) |
-| `Dim_Population_By_Age_Sex` | National + 3-province age×sex population pyramid, single year (2024) |
+| `Dim_Population_By_Age_Sex` | National + 3-province age×sex population pyramid, single year (2024). **Always add `WHERE is_headline_total = 1`** — the source ships four overlapping indicators per cell and summing them all returns 2× the true population. See [02_data_dictionary.md](02_data_dictionary.md) for the full indicator table. |
 | `Fact_HDC_Pop_Age` / `Fact_HDC_Incidence` / `Fact_HDC_Death_Age` | Chronic disease (diabetes, hypertension, COPD, coronary, cancers) burden by age group, **2022–2026** — the one genuinely multi-year series in this warehouse, good for trend/forecast tasks. ⚠ Restricted use, see below. |
 | `Fact_DDS_Disease_Ranking` | Top-ranked diseases by province, single year (2025) — not a trend table. ⚠ Restricted use, see below. |
 | `Fact_Lat_Krabang_Population` / `Fact_Lat_Krabang_Deaths` | Population/deaths by subdistrict — only 6 subdistricts, too small for anything beyond description |

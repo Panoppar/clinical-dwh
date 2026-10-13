@@ -36,22 +36,64 @@ pipeline bug.
 | `male`, `female`, `total`, `house` | `INT` | | Resident population/household counts for that district/year |
 
 ### Dim_Population_By_Age_Sex
-Grain: one row per (scope, province, sex, age_label, year). `scope` is
-`national` or `province` — only Bangkok, Samut Prakan, and Chachoengsao
-have province-level rows (the NSO extract was scoped to those three).
-Single year (BE2567/CE2024) only — not a time series.
+Grain: one row per (scope, province, **indicator**, sex, age_label, year).
+`scope` is `national` or `province` — only Bangkok, Samut Prakan, and
+Chachoengsao have province-level rows (the NSO extract was scoped to those
+three). Single year (BE2567/CE2024) only — not a time series.
+
+> ### ⚠ Always filter by indicator before aggregating
+>
+> The NSO source publishes **four different population measures** for every
+> (scope, province, sex, age, year) cell. They are not alternative
+> estimates of the same number — `DEM_IND24` is the **total**, and the
+> other three are its **mutually exclusive components**:
+>
+> | indicator_code | meaning | national (2024) |
+> |---|---|---|
+> | `DEM_IND24` | Population from registration — **TOTAL** | 65,951,210 |
+> | `DEM_IND109` | Registered in a household registration | 65,588,431 |
+> | `DEM_IND48` | Central house registration | 345,830 |
+> | `DEM_IND50` | During move (mid-transfer) | 16,949 |
+>
+> `109 + 48 + 50 = 65,951,210` — exactly `DEM_IND24`. So `SUM()` without an
+> indicator filter returns **precisely 2× the true population**.
+>
+> Use `WHERE is_headline_total = 1` (equivalent to
+> `indicator_code = 'DEM_IND24'`) unless you specifically want the
+> component breakdown.
+>
+> This is not hypothetical: an earlier version of this table omitted the
+> indicator column entirely, and the resulting population pyramid shipped
+> to a live dashboard showing Thailand at **130.9M** against a true ~66M.
 
 | Column | Type | Description |
 |---|---|---|
 | `scope` | `VARCHAR(10)` | `national` \| `province` |
 | `province_code` | `INT` | NULL for `scope='national'` |
 | `province_name_th` / `province_name_en` | `VARCHAR(100)` | |
+| `indicator_code` | `VARCHAR(20)` | `DEM_IND24` \| `DEM_IND109` \| `DEM_IND48` \| `DEM_IND50` — see warning above |
+| `indicator_name_en` | `VARCHAR(100)` | Decoded from the source's own SDMX structure file (`5_NSO/reg_structure.xml`), not guessed |
+| `is_headline_total` | `TINYINT(1)` | `1` only for `DEM_IND24`. **Filter on this before any `SUM()`.** |
 | `sex` | `VARCHAR(10)` | `Total` \| `Male` \| `Female` |
 | `age_label` | `VARCHAR(20)` | Original SDMX age code (kept for traceability) |
-| `age_exact` | `INT` | Populated when `age_qualifier='exact'` |
-| `age_qualifier` | `VARCHAR(10)` | `exact` \| `le` \| `ge` \| `total` \| `other` |
+| `age_exact` | `INT` | Populated for `exact`, `le`, `ge`, `gt`, `lt` qualifiers |
+| `age_qualifier` | `VARCHAR(10)` | See the age-qualifier table below |
 | `year_be` / `year_ce` | `INT` | Thai Buddhist Era / Gregorian year |
 | `population_count` | `INT` | |
+
+#### `age_qualifier` values
+
+| qualifier | rows | source codes | `age_exact` | meaning |
+|---|---|---|---|---|
+| `exact` | 3,000 | `Y1`…`Y100` | 1–100 | Single-year-of-age bucket |
+| `total` | 36 | `_T` | NULL | All ages combined (a sum — don't add it to the `exact` rows) |
+| `le` | 30 | `Y_LE1` | 1 | Age ≤ 1 (infants) |
+| `gt` | 30 | `Y_GT100` | 100 | Age > 100 — the open-ended top bracket |
+| `other` | 25 | `LUNAR` | NULL | **Unexplained.** Possibly relates to Thai lunar-calendar age counting for infants, but nothing in the source confirms that — treat as unresolved rather than assuming a meaning. |
+
+`ge` and `lt` are handled by the transform but don't appear in the current
+extract. Note that `exact` + `le` + `gt` overlap (an infant is in both `Y1`
+and `Y_LE1`), so don't sum across qualifiers either — pick one.
 
 ## 3. HDC chronic disease surveillance (⚠ restricted — see §4)
 

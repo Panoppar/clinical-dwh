@@ -40,6 +40,23 @@ Full schema: [docs/02_data_dictionary.md](02_data_dictionary.md). Full
 history of what was removed and why:
 [docs/03_external_reference_sources.md](03_external_reference_sources.md).
 
+## Known data trap — you will hit this if you don't filter
+
+`Dim_Population_By_Age_Sex` contains **four overlapping population
+indicators** per (scope, province, sex, age, year) cell. `DEM_IND24` is
+the total; the other three (`DEM_IND109`, `DEM_IND48`, `DEM_IND50`) are
+its mutually exclusive components. Any `SUM(population_count)` without an
+indicator filter returns **exactly 2× the true population** — this
+already shipped to a live dashboard once, showing Thailand at 130.9M
+against a true ~66M before it was caught.
+
+**Always write `WHERE is_headline_total = 1`** when aggregating that
+table. Similarly, don't sum across `age_qualifier` values — `exact`,
+`le`, and `gt` buckets overlap with each other. If a population number
+you compute looks roughly double a plausible real-world figure, this is
+almost certainly why; sanity-check totals against known real-world
+population before reporting them as findings.
+
 ## Governance constraints you must enforce, not just mention
 
 - **HDC and DDS data carry an unconfirmed-redistribution-rights caveat**

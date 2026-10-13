@@ -11,6 +11,7 @@ USE gold;
 
 INSERT INTO Dim_Population_By_Age_Sex (
   scope, province_code, province_name_th, province_name_en,
+  indicator_code, indicator_name_en, is_headline_total,
   sex, age_label, age_exact, age_qualifier, year_be, year_ce, population_count
 )
 SELECT
@@ -18,6 +19,9 @@ SELECT
   p.province_code,
   p.province_name AS province_name_th,
   g.province_name_en,
+  p.indicator_code,
+  p.indicator_name_en,
+  p.is_headline_total,
   p.sex,
   p.age_label,
   p.age_exact,

@@ -52,19 +52,35 @@ FROM bronze.dopa_population_monthly b;
 -- consistent with our own ingested data) rather than a hardcoded lookup.
 -- ---------------------------------------------------------------------------
 INSERT INTO population_reference_age_sex (
-  scope, province_code, province_name, sex, age_label, age_exact,
+  scope, province_code, province_name, indicator_code, indicator_name_en,
+  is_headline_total, sex, age_label, age_exact,
   age_qualifier, year_be, year_ce, population_count
 )
 SELECT
   IF(b.cwt_code = '_T', 'national', 'province') AS scope,
   IF(b.cwt_code = '_T', NULL, b.cwt_code) AS province_code,
   prov.province_name,
+  b.pop_ind AS indicator_code,
+  -- Names decoded from the source's own SDMX structure file
+  -- (5_NSO/reg_structure.xml), not guessed.
+  CASE b.pop_ind
+    WHEN 'DEM_IND24'  THEN 'Population from registration (TOTAL)'
+    WHEN 'DEM_IND109' THEN 'Registered in a household registration'
+    WHEN 'DEM_IND48'  THEN 'Central house registration'
+    WHEN 'DEM_IND50'  THEN 'During move (mid-transfer)'
+    ELSE b.pop_ind
+  END AS indicator_name_en,
+  IF(b.pop_ind = 'DEM_IND24', 1, 0) AS is_headline_total,
   CASE b.sex_code WHEN '_T' THEN 'Total' WHEN 'M' THEN 'Male' WHEN 'F' THEN 'Female' ELSE b.sex_code END AS sex,
   b.age_code AS age_label,
+  -- Y_GT / Y_LT are handled alongside Y_GE / Y_LE: the source uses
+  -- Y_GT100 ("over 100") for its open-ended top bracket, which an
+  -- earlier version of this CASE silently dropped into 'other' with a
+  -- NULL age_exact -- quietly excluding the oldest cohort from any
+  -- age_exact filter.
   CASE
     WHEN b.age_code REGEXP '^Y[0-9]+$' THEN CAST(SUBSTRING(b.age_code, 2) AS UNSIGNED)
-    WHEN b.age_code REGEXP '^Y_LE[0-9]+$' THEN CAST(SUBSTRING(b.age_code, 5) AS UNSIGNED)
-    WHEN b.age_code REGEXP '^Y_GE[0-9]+$' THEN CAST(SUBSTRING(b.age_code, 5) AS UNSIGNED)
+    WHEN b.age_code REGEXP '^Y_(LE|GE|GT|LT)[0-9]+$' THEN CAST(SUBSTRING(b.age_code, 5) AS UNSIGNED)
     ELSE NULL
   END AS age_exact,
   CASE
@@ -72,6 +88,8 @@ SELECT
     WHEN b.age_code REGEXP '^Y[0-9]+$' THEN 'exact'
     WHEN b.age_code REGEXP '^Y_LE[0-9]+$' THEN 'le'
     WHEN b.age_code REGEXP '^Y_GE[0-9]+$' THEN 'ge'
+    WHEN b.age_code REGEXP '^Y_GT[0-9]+$' THEN 'gt'
+    WHEN b.age_code REGEXP '^Y_LT[0-9]+$' THEN 'lt'
     ELSE 'other'
   END AS age_qualifier,
   CAST(b.time_period AS UNSIGNED) AS year_be,
