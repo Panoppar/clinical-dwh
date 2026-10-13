@@ -33,6 +33,7 @@ DWH_PASSWORD = os.environ["DWH_DB_PASSWORD"]
 # Filled in source-by-source as each one is built.
 BRONZE_SCRIPTS: list[str] = [
     "bronze/01_create_bronze_dopa_tables.sql",
+    "bronze/02_create_bronze_hdc_manual_tables.sql",
 ]
 SILVER_SCRIPTS: list[str] = []
 GOLD_SCRIPTS: list[str] = []
@@ -82,6 +83,11 @@ def print_bronze_summary() -> None:
     print_row_counts("bronze", [
         "dopa_population_by_area_month", "dopa_source_file_registry", "dopa_metadata_file_registry",
     ])
+    print_row_counts("bronze", [
+        "schema_registry", "report_catalog",
+        "ncd_reports", "morbidity_mortality_causes",
+        "occupational_environmental_diseases", "air_pollution_diseases",
+    ])
 
 
 def main() -> None:
@@ -94,6 +100,10 @@ def main() -> None:
     print("\n=== BRONZE: load DOPA population-by-area files ===")
     import extract_load_dopa
     extract_load_dopa.run()
+
+    print("\n=== BRONZE: load HDC manual exports ===")
+    import extract_load_hdc_manual
+    extract_load_hdc_manual.run()
 
     if SILVER_SCRIPTS:
         print("\n=== SILVER: create tables + transform ===")
