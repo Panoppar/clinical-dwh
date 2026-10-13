@@ -34,6 +34,13 @@ DWH_PASSWORD = os.environ["DWH_DB_PASSWORD"]
 BRONZE_SCRIPTS: list[str] = [
     "bronze/01_create_bronze_dopa_tables.sql",
     "bronze/02_create_bronze_hdc_manual_tables.sql",
+    "bronze/03_create_bronze_lat_krabang_tables.sql",
+    "bronze/04_create_bronze_kmch_tables.sql",
+    "bronze/05_create_bronze_factory_list_tables.sql",
+    "bronze/06_create_bronze_dds_health_region_tables.sql",
+    "bronze/07_create_bronze_nso_tables.sql",
+    "bronze/08_create_bronze_hdc_region6_13_tables.sql",
+    "bronze/09_create_bronze_other_health_tables.sql",
 ]
 SILVER_SCRIPTS: list[str] = []
 GOLD_SCRIPTS: list[str] = []
@@ -88,6 +95,35 @@ def print_bronze_summary() -> None:
         "ncd_reports", "morbidity_mortality_causes",
         "occupational_environmental_diseases", "air_pollution_diseases",
     ])
+    print_row_counts("bronze", [
+        "edu_vocational_college", "edu_university", "edu_school", "health_hospital",
+        "religious_site", "business_establishment", "safety_risk_point", "community",
+        "population_total", "population_death",
+    ])
+    print_row_counts("bronze", ["kmch_catchment_places"])
+    print_row_counts("bronze", ["factory_list"])
+    print_row_counts("bronze", ["dds_health_region_disease_report"])
+    print_row_counts("bronze", [
+        "ingestion_log", "pop_reg_national", "pop_reg_province",
+        "pop_reg_structure_metadata", "pop_sur_survey",
+    ])
+    print_row_counts("bronze", [
+        "inc_monthly_asthma", "inc_monthly_copd", "inc_monthly_coronary", "inc_monthly_dm", "inc_monthly_ht",
+        "inc_annual_ihd",
+        "pop_age_ca_breast", "pop_age_ca_cervix", "pop_age_ca_lung", "pop_age_copd", "pop_age_coronary",
+        "pop_age_dm", "pop_age_emphysema", "pop_age_ht", "pop_age_stroke",
+        "death_age_copd", "death_age_coronary", "death_age_dm", "death_age_ht",
+    ])
+    print_row_counts("bronze", [
+        "sick_298group_long", "sick_298group_wide",
+        "surveillance_top_diseases_2566", "surveillance_top_diseases_2567",
+        "compare_cases_by_disease", "compare_cases_by_subdistrict",
+        "ncd_mortality_multisheet", "cause_of_death_top10_with_rate", "cause_of_death_top10_no_rate",
+        "population_by_age_subdistrict_bkk", "population_by_tambon_national",
+        "elderly_dependency_by_district", "health_kpi_export",
+        "community_count_by_district_bkk", "foreign_labor_permit_by_area_bkk",
+        "_ingestion_manifest",
+    ])
 
 
 def main() -> None:
@@ -104,6 +140,34 @@ def main() -> None:
     print("\n=== BRONZE: load HDC manual exports ===")
     import extract_load_hdc_manual
     extract_load_hdc_manual.run()
+
+    print("\n=== BRONZE: load Lat Krabang district office tables ===")
+    import extract_load_lat_krabang
+    extract_load_lat_krabang.run()
+
+    print("\n=== BRONZE: load KMCH catchment places ===")
+    import extract_load_kmch
+    extract_load_kmch.run()
+
+    print("\n=== BRONZE: load Factory list ===")
+    import extract_load_factory_list
+    extract_load_factory_list.run()
+
+    print("\n=== BRONZE: load DDS health region weekly reports ===")
+    import extract_load_dds_health_region
+    extract_load_dds_health_region.run()
+
+    print("\n=== BRONZE: load NSO population data ===")
+    import extract_load_nso
+    extract_load_nso.run()
+
+    print("\n=== BRONZE: load HDC region6_13 by-age API exports ===")
+    import extract_load_hdc_region6_13
+    extract_load_hdc_region6_13.run()
+
+    print("\n=== BRONZE: load other health & population tables ===")
+    import extract_load_other_health
+    extract_load_other_health.run()
 
     if SILVER_SCRIPTS:
         print("\n=== SILVER: create tables + transform ===")

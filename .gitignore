@@ -7,14 +7,20 @@
 # via a simple URL, see docs/03_external_reference_sources.md once rewritten.
 external-sources/dopa/
 
-# Reminder for future sources (rebuilt 2026-10-13 from the reorganized
-# share_unprocessed_20261010 folder): HDC/DDS health surveillance and Lat
+# Phase 2 shared-drive data, rebuilt 2026-10-13 from the reorganized
+# share_unprocessed_20261010 folder: HDC/DDS health surveillance and Lat
 # Krabang district office data carry the same usage-rights caveat as
 # before -- redistribution rights for HDC/DDS were never confirmed with the
-# data owner, and one Lat Krabang file has a community leader's real PII.
-# Add gitignore entries for those folders under their new paths as each
-# source is built; do not push that raw data to the shared git remote
-# regardless of local-use authorization.
+# data owner. The Lat Krabang community file (name_head/tel = a real
+# community leader's name and phone number) isn't even copied into this
+# repo (see pipeline/extract_load_lat_krabang.py), but the whole Lat
+# Krabang folder stays gitignored anyway, matching the original policy for
+# this data group. Loaded into the LOCAL warehouse on explicit instruction;
+# never pushed to the shared git remote regardless of that instruction.
+external-sources/hdc_manual/
+external-sources/hdc_region6_13/
+external-sources/dds_health_region/
+external-sources/lat_krabang/
 
 # OS/editor noise
 .DS_Store
