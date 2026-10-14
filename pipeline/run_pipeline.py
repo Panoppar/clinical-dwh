@@ -42,7 +42,12 @@ BRONZE_SCRIPTS: list[str] = [
     "bronze/08_create_bronze_hdc_region6_13_tables.sql",
     "bronze/09_create_bronze_other_health_tables.sql",
 ]
-SILVER_SCRIPTS: list[str] = []
+SILVER_SCRIPTS: list[str] = [
+    "silver/01_create_silver_dopa_tables.sql",
+    "silver/02_transform_silver_dopa.sql",
+    "silver/03_create_silver_nso_tables.sql",
+    "silver/04_create_silver_other_health_population_tables.sql",
+]
 GOLD_SCRIPTS: list[str] = []
 
 
@@ -126,6 +131,17 @@ def print_bronze_summary() -> None:
     ])
 
 
+def print_silver_summary() -> None:
+    print_row_counts("silver", ["population_by_area_month"])
+    print_row_counts("silver", [
+        "pop_indicator_lookup", "population_reference_age_sex", "labor_force_survey",
+    ])
+    print_row_counts("silver", [
+        "population_by_age_subdistrict_bkk", "population_by_tambon_national",
+        "elderly_dependency_by_district",
+    ])
+
+
 def main() -> None:
     wait_for_mysql(DWH_HOST, DWH_PORT, DWH_USER, DWH_PASSWORD, "warehouse-db")
 
@@ -174,12 +190,22 @@ def main() -> None:
         for script in SILVER_SCRIPTS:
             run_sql_file(script)
 
+        print("\n=== SILVER: transform NSO population & labor force data ===")
+        import transform_silver_nso
+        transform_silver_nso.run()
+
+        print("\n=== SILVER: transform other_health population tables ===")
+        import transform_silver_other_health_population
+        transform_silver_other_health_population.run()
+
     if GOLD_SCRIPTS:
         print("\n=== GOLD: create star schema + build dimensions/facts ===")
         for script in GOLD_SCRIPTS:
             run_sql_file(script)
 
     print_bronze_summary()
+    if SILVER_SCRIPTS:
+        print_silver_summary()
     print("\n[pipeline] completed successfully")
 
 
