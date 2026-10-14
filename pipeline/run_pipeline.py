@@ -47,6 +47,13 @@ SILVER_SCRIPTS: list[str] = [
     "silver/02_transform_silver_dopa.sql",
     "silver/03_create_silver_nso_tables.sql",
     "silver/04_create_silver_other_health_population_tables.sql",
+    "silver/05_create_silver_hdc_manual_tables.sql",
+    "silver/06_create_silver_hdc_region6_13_tables.sql",
+    "silver/07_transform_silver_hdc_region6_13.sql",
+    "silver/08_create_silver_dds_health_region_tables.sql",
+    "silver/09_transform_silver_dds_health_region.sql",
+    "silver/10_create_silver_other_health_disease_tables.sql",
+    "silver/11_transform_silver_other_health_disease.sql",
 ]
 GOLD_SCRIPTS: list[str] = []
 
@@ -140,6 +147,16 @@ def print_silver_summary() -> None:
         "population_by_age_subdistrict_bkk", "population_by_tambon_national",
         "elderly_dependency_by_district",
     ])
+    print_row_counts("silver", ["hdc_indicator_observations"])
+    print_row_counts("silver", [
+        "hdc_incidence_monthly", "hdc_incidence_annual", "hdc_population_by_age", "hdc_death_by_age",
+    ])
+    print_row_counts("silver", ["dds_health_region_disease_report"])
+    print_row_counts("silver", [
+        "sick_298group_long", "sick_298group_wide", "surveillance_top_diseases",
+        "compare_cases_by_disease", "compare_cases_by_subdistrict", "ncd_mortality_by_disease",
+        "cause_of_death_top10_with_rate", "cause_of_death_top10_no_rate",
+    ])
 
 
 def main() -> None:
@@ -197,6 +214,10 @@ def main() -> None:
         print("\n=== SILVER: transform other_health population tables ===")
         import transform_silver_other_health_population
         transform_silver_other_health_population.run()
+
+        print("\n=== SILVER: unpivot HDC_manual_exports ===")
+        import transform_silver_hdc_manual
+        transform_silver_hdc_manual.run()
 
     if GOLD_SCRIPTS:
         print("\n=== GOLD: create star schema + build dimensions/facts ===")
