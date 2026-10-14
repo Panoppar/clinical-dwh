@@ -54,6 +54,12 @@ SILVER_SCRIPTS: list[str] = [
     "silver/09_transform_silver_dds_health_region.sql",
     "silver/10_create_silver_other_health_disease_tables.sql",
     "silver/11_transform_silver_other_health_disease.sql",
+    "silver/12_create_silver_lat_krabang_tables.sql",
+    "silver/13_transform_silver_lat_krabang.sql",
+    "silver/14_create_silver_kmch_factory_tables.sql",
+    "silver/15_transform_silver_kmch_factory.sql",
+    "silver/16_create_silver_other_health_local_tables.sql",
+    "silver/17_transform_silver_other_health_local.sql",
 ]
 GOLD_SCRIPTS: list[str] = []
 
@@ -156,6 +162,15 @@ def print_silver_summary() -> None:
         "sick_298group_long", "sick_298group_wide", "surveillance_top_diseases",
         "compare_cases_by_disease", "compare_cases_by_subdistrict", "ncd_mortality_by_disease",
         "cause_of_death_top10_with_rate", "cause_of_death_top10_no_rate",
+    ])
+    print_row_counts("silver", [
+        "edu_vocational_college", "edu_university", "edu_school", "health_hospital",
+        "religious_site", "business_establishment", "safety_risk_point",
+        "lat_krabang_population_by_subdistrict", "lat_krabang_deaths_by_subdistrict",
+    ])
+    print_row_counts("silver", ["kmch_catchment_places", "factory_list"])
+    print_row_counts("silver", [
+        "health_kpi_export", "community_count_by_district_bkk", "foreign_labor_permit_by_area_bkk",
     ])
 
 
