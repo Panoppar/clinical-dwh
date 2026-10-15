@@ -93,6 +93,18 @@ GOLD_SCRIPTS_POST_GEO: list[str] = [
     "gold/22_transform_agg_disease_kpi_monthly.sql",
     "gold/23_alter_feat_geography_month_add_disease.sql",
     "gold/24_transform_feat_geography_month_disease.sql",
+    "gold/25_create_dim_factory.sql",
+    "gold/26_create_dim_place.sql",
+    "gold/27_create_fact_factory_registration.sql",
+    "gold/28_transform_fact_factory_registration.sql",
+    "gold/29_create_fact_catchment_place.sql",
+    "gold/30_transform_fact_catchment_place.sql",
+    "gold/31_create_obt_economic_by_geography.sql",
+    "gold/32_transform_obt_economic_by_geography.sql",
+    "gold/33_create_agg_economic_summary_yearly.sql",
+    "gold/34_transform_agg_economic_summary_yearly.sql",
+    "gold/35_create_feat_factory.sql",
+    "gold/36_transform_feat_factory.sql",
 ]
 
 
@@ -212,6 +224,8 @@ def print_gold_summary() -> None:
     print_row_counts("gold", ["obt_population_by_geography", "agg_population_summary_yearly", "feat_geography_month"])
     print_row_counts("gold", ["dim_disease", "fact_disease_event", "fact_disease_incidence_hdc"])
     print_row_counts("gold", ["obt_disease_surveillance", "agg_disease_kpi_monthly"])
+    print_row_counts("gold", ["dim_factory", "dim_place", "fact_factory_registration", "fact_catchment_place"])
+    print_row_counts("gold", ["obt_economic_by_geography", "agg_economic_summary_yearly", "feat_factory"])
 
 
 def main() -> None:
