@@ -82,6 +82,17 @@ GOLD_SCRIPTS_POST_GEO: list[str] = [
     "gold/11_transform_agg_population_summary_yearly.sql",
     "gold/12_create_feat_geography_month.sql",
     "gold/13_transform_feat_geography_month.sql",
+    "gold/14_create_dim_disease.sql",
+    "gold/15_create_fact_disease_event.sql",
+    "gold/16_transform_fact_disease_event.sql",
+    "gold/17_create_fact_disease_incidence_hdc.sql",
+    "gold/18_transform_fact_disease_incidence_hdc.sql",
+    "gold/19_create_obt_disease_surveillance.sql",
+    "gold/20_transform_obt_disease_surveillance.sql",
+    "gold/21_create_agg_disease_kpi_monthly.sql",
+    "gold/22_transform_agg_disease_kpi_monthly.sql",
+    "gold/23_alter_feat_geography_month_add_disease.sql",
+    "gold/24_transform_feat_geography_month_disease.sql",
 ]
 
 
@@ -199,6 +210,8 @@ def print_gold_summary() -> None:
     print_row_counts("gold", ["dim_date", "dim_geography", "dim_age_sex", "dim_population_component"])
     print_row_counts("gold", ["fact_population_by_area", "fact_population_age_sex"])
     print_row_counts("gold", ["obt_population_by_geography", "agg_population_summary_yearly", "feat_geography_month"])
+    print_row_counts("gold", ["dim_disease", "fact_disease_event", "fact_disease_incidence_hdc"])
+    print_row_counts("gold", ["obt_disease_surveillance", "agg_disease_kpi_monthly"])
 
 
 def main() -> None:
