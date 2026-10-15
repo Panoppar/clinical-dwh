@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>clinical-dwh — Gold Layer Documentation</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --panel: #171a23;
+    --panel2: #1e2230;
+    --border: #2a2f3d;
+    --text: #e4e6eb;
+    --muted: #9aa1b2;
+    --accent: #5b9dff;
+    --accent2: #38c9a3;
+    --warn: #f0a93c;
+    --bad: #f25c5c;
+    --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.55;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, .mono { font-family: var(--mono); font-size: 0.92em; }
+  code {
+    background: #0b0d12;
+    padding: 0.12em 0.4em;
+    border-radius: 4px;
+    color: #d6deeb;
+  }
+  .layout { display: flex; min-height: 100vh; }
+  nav.sidebar {
+    width: 290px;
+    flex: 0 0 290px;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    padding: 24px 18px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+  }
+  nav.sidebar h1 {
+    font-size: 15px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin: 0 0 4px;
+  }
+  nav.sidebar .sub {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 20px;
+  }
+  nav.sidebar h2 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin: 22px 0 8px;
+    border-top: 1px solid var(--border);
+    padding-top: 14px;
+  }
+  nav.sidebar h2:first-of-type { border-top: none; padding-top: 0; }
+  nav.sidebar ul { list-style: none; margin: 0; padding: 0; }
+  nav.sidebar li { margin: 3px 0; }
+  nav.sidebar a {
+    color: var(--text);
+    display: block;
+    padding: 4px 8px;
+    border-radius: 5px;
+    font-size: 13.5px;
+  }
+  nav.sidebar a:hover { background: var(--panel2); text-decoration: none; }
+  nav.sidebar .tag {
+    display: inline-block;
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    margin-left: 6px;
+    font-family: var(--mono);
+  }
+  .tag-dim { background: #2b3a55; color: #9cc1ff; }
+  .tag-fact { background: #2c3e34; color: #8fe0bf; }
+  .tag-obt { background: #3c3326; color: #f0c674; }
+  .tag-agg { background: #3a2c44; color: #d6a8ff; }
+  .tag-feat { background: #442c2c; color: #ff9d9d; }
+
+  main { flex: 1; padding: 44px 56px 120px; max-width: 980px; }
+  header.hero { margin-bottom: 40px; }
+  header.hero h1 { font-size: 30px; margin: 0 0 8px; }
+  header.hero p { color: var(--muted); font-size: 15px; max-width: 700px; }
+  .pill-row { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+  .pill {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-size: 13px;
+  }
+  .pill b { display: block; font-size: 20px; color: var(--accent2); }
+
+  section { margin-bottom: 56px; }
+  section > h2 {
+    font-size: 22px;
+    border-bottom: 2px solid var(--border);
+    padding-bottom: 10px;
+    margin-bottom: 18px;
+    scroll-margin-top: 20px;
+  }
+  section > h2 .stage-label {
+    font-size: 13px;
+    color: var(--muted);
+    font-weight: 400;
+    margin-left: 10px;
+  }
+  .intro-box {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 24px;
+    font-size: 14.5px;
+    color: #c8cce0;
+  }
+
+  table.schema {
+    width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    border-collapse: collapse;
+    overflow: hidden;
+    font-size: 13.5px;
+    scroll-margin-top: 20px;
+  }
+  table.schema caption { display: none; }
+  table.schema th, table.schema td {
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  table.schema th { background: var(--panel2); color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; }
+  table.schema tr:last-child td { border-bottom: none; }
+  table.schema td.col-name { font-family: var(--mono); color: #d6deeb; white-space: nowrap; }
+  table.schema td.col-type { font-family: var(--mono); color: var(--muted); white-space: nowrap; }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+  }
+  .card h3 {
+    margin: 0 0 4px;
+    font-size: 17px;
+    font-family: var(--mono);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .card .grain {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 14px;
+  }
+  .card .grain b { color: var(--text); font-family: var(--mono); font-weight: 500; }
+  .card .rowcount {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 12px;
+    background: #0b0d12;
+    color: var(--accent2);
+    padding: 2px 8px;
+    border-radius: 999px;
+    margin-left: auto;
+  }
+  .gotcha {
+    background: #26200f;
+    border: 1px solid #4a3c17;
+    border-radius: 7px;
+    padding: 10px 14px;
+    margin-top: 12px;
+    font-size: 13px;
+    color: #e8cf8f;
+  }
+  .gotcha b { color: var(--warn); }
+  .gotcha.bad { background: #2a1616; border-color: #5a2626; color: #f0b5b5; }
+  .gotcha.bad b { color: var(--bad); }
+
+  .kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px) { .kpi-grid { grid-template-columns: 1fr; } }
+  .kpi-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 16px 18px;
+  }
+  .kpi-card h4 { margin: 0 0 6px; font-size: 14.5px; }
+  .kpi-card .formula { font-family: var(--mono); font-size: 12px; color: var(--accent2); margin-bottom: 6px; }
+  .kpi-card .src { font-size: 12px; color: var(--muted); }
+
+  .flow {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin: 20px 0;
+    flex-wrap: wrap;
+  }
+  .flow .stage {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 14px 20px;
+    text-align: center;
+    flex: 1;
+    min-width: 140px;
+  }
+  .flow .stage b { display: block; font-size: 15px; margin-bottom: 4px; }
+  .flow .stage span { font-size: 12px; color: var(--muted); }
+  .flow .arrow { color: var(--muted); font-size: 20px; }
+
+  footer { color: var(--muted); font-size: 12px; margin-top: 60px; border-top: 1px solid var(--border); padding-top: 18px; }
+
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav class="sidebar">
+  <h1>clinical-dwh</h1>
+  <div class="sub">Gold layer reference — Bronze → Silver → Gold</div>
+
+  <h2>Overview</h2>
+  <ul>
+    <li><a href="#architecture">Architecture</a></li>
+    <li><a href="#conventions">Conventions</a></li>
+  </ul>
+
+  <h2>Stage 1 — Population</h2>
+  <ul>
+    <li><a href="#dim_date">dim_date <span class="tag tag-dim">dim</span></a></li>
+    <li><a href="#dim_geography">dim_geography <span class="tag tag-dim">dim</span></a></li>
+    <li><a href="#dim_age_sex">dim_age_sex <span class="tag tag-dim">dim</span></a></li>
+    <li><a href="#dim_population_component">dim_population_component <span class="tag tag-dim">dim</span></a></li>
+    <li><a href="#fact_population_by_area">fact_population_by_area <span class="tag tag-fact">fact</span></a></li>
+    <li><a href="#fact_population_age_sex">fact_population_age_sex <span class="tag tag-fact">fact</span></a></li>
+    <li><a href="#obt_population_by_geography">obt_population_by_geography <span class="tag tag-obt">obt</span></a></li>
+    <li><a href="#agg_population_summary_yearly">agg_population_summary_yearly <span class="tag tag-agg">agg</span></a></li>
+    <li><a href="#feat_geography_month">feat_geography_month <span class="tag tag-feat">feat</span></a></li>
+  </ul>
+
+  <h2>Stage 2 — Disease Surveillance</h2>
+  <ul>
+    <li><a href="#dim_disease">dim_disease <span class="tag tag-dim">dim</span></a></li>
+    <li><a href="#fact_disease_event">fact_disease_event <span class="tag tag-fact">fact</span></a></li>
+    <li><a href="#fact_disease_incidence_hdc">fact_disease_incidence_hdc <span class="tag tag-fact">fact</span></a></li>
+    <li><a href="#obt_disease_surveillance">obt_disease_surveillance <span class="tag tag-obt">obt</span></a></li>
+    <li><a href="#agg_disease_kpi_monthly">agg_disease_kpi_monthly <span class="tag tag-agg">agg</span></a></li>
+  </ul>
+
+  <h2>Stage 3 — Economic / Local-Area</h2>
+  <ul>
+    <li><a href="#dim_factory">dim_factory <span class="tag tag-dim">dim</span></a></li>
+    <li><a href="#dim_place">dim_place <span class="tag tag-dim">dim</span></a></li>
+    <li><a href="#fact_factory_registration">fact_factory_registration <span class="tag tag-fact">fact</span></a></li>
+    <li><a href="#fact_catchment_place">fact_catchment_place <span class="tag tag-fact">fact</span></a></li>
+    <li><a href="#obt_economic_by_geography">obt_economic_by_geography <span class="tag tag-obt">obt</span></a></li>
+    <li><a href="#agg_economic_summary_yearly">agg_economic_summary_yearly <span class="tag tag-agg">agg</span></a></li>
+    <li><a href="#feat_factory">feat_factory <span class="tag tag-feat">feat</span></a></li>
+  </ul>
+
+  <h2>Reference</h2>
+  <ul>
+    <li><a href="#kpi-catalog">KPI catalog</a></li>
+    <li><a href="#gotchas">Data-quality gotchas index</a></li>
+  </ul>
+</nav>
+
+<main>
+
+<header class="hero">
+  <h1>Gold Layer Documentation</h1>
+  <p>A local Dockerized Medallion (Bronze/Silver/Gold) MySQL data warehouse covering population demographics, disease surveillance, and economic/local-area data for a hospital catchment area in Bangkok. This page documents the Gold layer: the Star Schema foundation plus the derived OBT, aggregate, and feature-store tables built on top of it.</p>
+  <div class="pill-row">
+    <div class="pill"><b>62</b>Bronze tables</div>
+    <div class="pill"><b>35</b>Silver tables</div>
+    <div class="pill"><b>21</b>Gold tables</div>
+    <div class="pill"><b>9</b>source systems</div>
+    <div class="pill"><b>3</b>Gold stages</div>
+  </div>
+</header>
+
+<section id="architecture">
+  <h2>Architecture</h2>
+  <div class="flow">
+    <div class="stage"><b>Bronze</b><span>raw ingestion, 1:1 with source files, typed as text/varchar</span></div>
+    <div class="arrow">&rarr;</div>
+    <div class="stage"><b>Silver</b><span>conformed, typed, deduplicated — still source-shaped</span></div>
+    <div class="arrow">&rarr;</div>
+    <div class="stage"><b>Gold — Star Schema</b><span>dim_/fact_, cross-source geography & taxonomy resolved</span></div>
+    <div class="arrow">&rarr;</div>
+    <div class="stage"><b>Gold — Derived</b><span>obt_ / agg_ for BI, feat_ for ML — always derived from the star, never from Silver directly</span></div>
+  </div>
+  <div class="intro-box">
+    The Gold layer serves two consumers with different physical requirements. <b>Metabase dashboards</b> need
+    sub-second reads, so every dashboard query hits a denormalized <code>obt_</code> (One Big Table) or a
+    pre-aggregated <code>agg_</code> table — never a runtime join across the star schema. <b>ML pipelines</b>
+    (cold-start geographic segmentation, Bayesian spatial-temporal models) need a flat, wide feature vector, so
+    <code>feat_</code> tables are built at the natural modeling grain — geography&times;time for the
+    spatial-temporal model, and one entity-level example (<code>feat_factory</code>) for clustering/segmentation.
+    Both consumer layers are <b>derived from the star schema</b>, never loaded from Silver directly, so every
+    data-quality fix (deduplication, name normalization, rollup-row exclusion) lives in exactly one place.
+  </div>
+</section>
+
+<section id="conventions">
+  <h2>Conventions</h2>
+  <table class="schema">
+    <tr><th>Rule</th><th>Detail</th></tr>
+    <tr><td>Naming</td><td><code>dim_</code>, <code>fact_</code>, <code>obt_</code>, <code>agg_</code>, <code>feat_</code> prefixes, snake_case throughout.</td></tr>
+    <tr><td>Surrogate keys</td><td><code>INT UNSIGNED AUTO_INCREMENT PRIMARY KEY</code> on every dimension. Exception: <code>dim_date</code> uses the Kimball convention of a meaningful integer key (<code>YYYYMMDD</code>, e.g. <code>20240101</code>) so date-range filters don't need a join.</td></tr>
+    <tr><td>Sizing</td><td>No blanket <code>VARCHAR(255)</code>. Every column width is sized from an observed real maximum plus margin (e.g. Thai admin names cap at 108 observed chars &rarr; <code>VARCHAR(150)</code>; disease/report names cap at 260 observed &rarr; <code>VARCHAR(300)</code>).</td></tr>
+    <tr><td>Indexing</td><td>Every FK indexed. Every fact table carries a composite <code>(geo_key, date_key)</code> index — the universal join pattern into OBT/agg. Facility-grain facts (e.g. HDC's hospital/area data) additionally index the facility-level natural key, since a geography-level index alone can't support a facility-grain self-join without a full scan.</td></tr>
+    <tr><td>Full refresh</td><td>Every script is <code>DROP TABLE IF EXISTS</code> + rebuild — no incremental logic, consistent with Bronze/Silver. <code>SET FOREIGN_KEY_CHECKS = 0/1</code> wraps any table that's referenced by a FK from a table built later in the run, so reruns don't fail on stale constraints.</td></tr>
+    <tr><td>Cross-source joins happen once</td><td>Geography name normalization, disease-code decoding, and sex/age normalization all happen in the dimension build, not re-derived in every fact/OBT/agg query.</td></tr>
+  </table>
+</section>
+
+<!-- ============================= STAGE 1 ============================= -->
+<section>
+  <h2>Stage 1 — Population &amp; Demographics <span class="stage-label">DOPA · NSO · other_health</span></h2>
+
+  <div class="card" id="dim_date">
+    <h3>dim_date <span class="tag tag-dim">dim</span><span class="rowcount">13,879 rows</span></h3>
+    <div class="grain">Grain: <b>one row per calendar day</b>, 1993-01-01 to 2030-12-31.</div>
+    <table class="schema">
+      <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+      <tr><td class="col-name">date_key</td><td class="col-type">INT PK</td><td>YYYYMMDD, e.g. 20240101</td></tr>
+      <tr><td class="col-name">full_date</td><td class="col-type">DATE</td><td></td></tr>
+      <tr><td class="col-name">year_ce / year_be</td><td class="col-type">SMALLINT</td><td>Gregorian and Thai Buddhist Era years</td></tr>
+      <tr><td class="col-name">quarter / month / day</td><td class="col-type">TINYINT</td><td></td></tr>
+      <tr><td class="col-name">month_name</td><td class="col-type">VARCHAR(20)</td><td>"January".."December"</td></tr>
+      <tr><td class="col-name">is_month_start</td><td class="col-type">TINYINT(1)</td><td></td></tr>
+    </table>
+    <div class="gotcha"><b>Gotcha:</b> populated via a non-recursive cross-join-of-digit-tables generator, not a recursive CTE — MySQL 8.0's default <code>cte_max_recursion_depth</code> (1000) would silently truncate the ~13,900-day series. <code>DATE_FORMAT(d,'%B')</code> also returned the literal string "B" instead of a month name on this server despite correct locale settings — worked around with an explicit <code>ELT()</code> lookup instead of relying on server locale at all.</div>
+  </div>
+
+  <div class="card" id="dim_geography">
+    <h3>dim_geography <span class="tag tag-dim">dim</span><span class="rowcount">13,018 rows</span></h3>
+    <div class="grain">Grain: <b>one row per administrative unit</b> (country / province / district / subdistrict), self-referencing hierarchy via <code>parent_geo_key</code>.</div>
+    <table class="schema">
+      <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+      <tr><td class="col-name">geo_key</td><td class="col-type">INT UNSIGNED PK</td><td></td></tr>
+      <tr><td class="col-name">admin_level</td><td class="col-type">VARCHAR(12)</td><td>country | province | district | subdistrict</td></tr>
+      <tr><td class="col-name">province_code / district_code / subdistrict_code</td><td class="col-type">VARCHAR(10/15/15)</td><td>DOPA government codes — the reliable cross-source join key</td></tr>
+      <tr><td class="col-name">province_name_th / district_name_th / subdistrict_name_th</td><td class="col-type">VARCHAR(150)</td><td>Canonical name, one per code</td></tr>
+      <tr><td class="col-name">parent_geo_key</td><td class="col-type">INT UNSIGNED NULL</td><td>Self-FK; NULL for 10 subdistricts with no matching district row (real gap, not a bug)</td></tr>
+      <tr><td class="col-name">source_system</td><td class="col-type">VARCHAR(50)</td><td></td></tr>
+    </table>
+    <div class="gotcha bad"><b>Bug found &amp; fixed:</b> dedupes by administrative <i>code alone</i>, picking the latest name per code (via <code>GROUP_CONCAT</code> + <code>SUBSTRING_INDEX</code> ordered by <code>yymm DESC</code>). The original approach deduped by <code>(code, name)</code> together — several codes were reclassified over DOPA's 30-year span (e.g. a district renamed from เทศบาลเมือง to เทศบาลนคร, same code), which produced 2+ dimension rows per code and silently doubled every fact-table join on that code.</div>
+  </div>
+
+  <div class="card" id="dim_age_sex">
+    <h3>dim_age_sex <span class="tag tag-dim">dim</span><span class="rowcount">317 rows</span></h3>
+    <div class="grain">Grain: one row per distinct (sex, age_exact, age_qualifier) combination actually observed.</div>
+    <table class="schema">
+      <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+      <tr><td class="col-name">age_sex_key</td><td class="col-type">INT UNSIGNED PK</td><td></td></tr>
+      <tr><td class="col-name">sex</td><td class="col-type">VARCHAR(10)</td><td>male | female | total</td></tr>
+      <tr><td class="col-name">age_exact</td><td class="col-type">SMALLINT NULL</td><td>NULL for bucket/total qualifiers or when age doesn't apply</td></tr>
+      <tr><td class="col-name">age_qualifier</td><td class="col-type">VARCHAR(10) NULL</td><td>exact | le | ge | gt | lt | total | other; NULL when there's no age dimension at all</td></tr>
+    </table>
+    <div class="gotcha"><b>Gotcha:</b> 3 extra rows — (male,NULL,NULL), (female,NULL,NULL), (total,NULL,NULL) — represent "sex applies, age doesn't" for other_health's 5 non-age-bracket components (grand_total, non_thai_national, etc). Without these, an inner join from the fact table would silently drop every row for those components.</div>
+  </div>
+
+  <div class="card" id="dim_population_component">
+    <h3>dim_population_component <span class="tag tag-dim">dim</span><span class="rowcount">12 rows</span></h3>
+    <div class="grain">Grain: one row per (source_system, component_code) — NSO's 6 DEM_IND* indicator codes + other_health's 6 component_type strings.</div>
+    <div class="gotcha"><b>Design note:</b> <code>is_headline_total</code> deliberately isn't a column here — it depends on the (component, sex) <i>combination</i>, not the component alone (other_health's <code>grand_total</code> pairs with sex=male/female too, but only sex=total is the real headline figure). It lives on the fact table instead.</div>
+  </div>
+
+  <div class="card" id="fact_population_by_area">
+    <h3>fact_population_by_area <span class="tag tag-fact">fact</span><span class="rowcount">349,983 rows</span></h3>
+    <div class="grain">Grain: <b>geo_key &times; date_key &times; admin_level</b>. Sources: DOPA's monthly area file + population_by_tambon_national, <code>is_rollup_row=0</code> applied at load.</div>
+    <table class="schema">
+      <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+      <tr><td class="col-name">male_count / female_count / total_count / house_count</td><td class="col-type">BIGINT</td><td></td></tr>
+      <tr><td class="col-name">source_system</td><td class="col-type">VARCHAR(20)</td><td>dopa | other_health</td></tr>
+    </table>
+    <div class="gotcha"><b>Reconciled exactly</b> against filtered Silver counts: province/dopa 2,138; district/dopa 56,646; subdistrict/dopa 282,353; subdistrict/other_health 8,846. Spot-checked against known real figures (Bangkok Dec-2024: 5,455,020; national Dec-2020: 66,186,727).</div>
+    <div class="gotcha"><b>Known overlap:</b> Dec-2025 subdistrict data appears from <i>both</i> DOPA's own snapshot and other_health's <code>population_by_tambon_national</code> — same underlying government data, two delivery paths, kept as separate rows per this project's no-cross-source-merge rule.</div>
+  </div>
+
+  <div class="card" id="fact_population_age_sex">
+    <h3>fact_population_age_sex <span class="tag tag-fact">fact</span><span class="rowcount">82,105 rows</span></h3>
+    <div class="grain">Grain: <b>geo_key &times; date_key &times; age_sex_key &times; component_key</b>. NSO's national rows map to the 'country' geo_key.</div>
+    <div class="gotcha bad"><b>Gotcha, confirmed by direct testing:</b> <code>is_headline_total=1</code> alone is <i>not</i> safe to <code>SUM()</code> — it only narrows to the DEM_IND24 indicator, which has one row per (sex &times; age) slice. Summing without also filtering <code>sex='total' AND age_qualifier='total'</code> returns 2&ndash;4&times; the real figure (confirmed: country-level 2024 read 263,804,840 — 4&times; the real 65,951,210 — until both filters were added).</div>
+  </div>
+
+  <div class="card" id="obt_population_by_geography">
+    <h3>obt_population_by_geography <span class="tag tag-obt">obt</span><span class="rowcount">349,983 rows</span></h3>
+    <div class="grain">Grain: one row per (geography, month) — fully denormalized for Metabase, zero joins at query time.</div>
+    <div class="gotcha">Growth rates (<code>pop_growth_mom_pct</code>, <code>pop_growth_yoy_pct</code>) are computed via an explicit self-join on the <i>exact</i> prior calendar period, not a sequential <code>LAG()</code> window function — this source's real cadence is mostly one December snapshot per year, so <code>LAG()</code>'s "previous row in the partition" would silently compare across a multi-year gap and mislabel it "MoM". The self-join correctly returns NULL when no exact prior period exists.</div>
+  </div>
+
+  <div class="card" id="agg_population_summary_yearly">
+    <h3>agg_population_summary_yearly <span class="tag tag-agg">agg</span><span class="rowcount">341,149 rows</span></h3>
+    <div class="grain">Grain: geo_key &times; year. Pre-computes <code>yoy_growth_pct</code>, <code>age_dependency_ratio</code>, <code>aging_index</code>, <code>non_thai_national_pct</code>.</div>
+    <div class="gotcha"><b>Coverage gap, by design:</b> <code>fact_population_by_area</code> never has a country-level row, and DOPA's province series stops at Dec-2020 while NSO's province age-breakdown is 2024-only. A second NSO-sourced insert seeds country/province rows for years DOPA doesn't cover, using DEM_IND24 (sex=total, age=total) as the base total.</div>
+    <div class="gotcha"><b>Within NSO:</b> the age-independent grand total spans 2017&ndash;2025, but the detailed single-year-of-age breakdown needed for <code>age_dependency_ratio</code>/<code>aging_index</code> exists only for 2024 — so <code>non_thai_national_pct</code> populates for all 9 years while the two age-band ratios populate for 2024 only (confirmed plausible: 41.65% dependency ratio, aging index 94.19, consistent with Thailand's known aging trend).</div>
+  </div>
+
+  <div class="card" id="feat_geography_month">
+    <h3>feat_geography_month <span class="tag tag-feat">feat</span><span class="rowcount">349,995 rows (+ 5 disease columns from Stage 2)</span></h3>
+    <div class="grain">Grain: <b>geo_key &times; date_key (month)</b> — the geography&times;time feature store for the spatial-temporal ML model.</div>
+    <table class="schema">
+      <tr><th>Column</th><th>Notes</th></tr>
+      <tr><td class="col-name">pop_density_proxy</td><td>Literally <code>= total_count</code> — no land-area source exists in this warehouse yet. Documented stand-in, not a real density.</td></tr>
+      <tr><td class="col-name">pct_age_0_14 / pct_age_15_64 / pct_age_65_plus</td><td>Same NSO/other_health gap as the agg table, at monthly grain.</td></tr>
+      <tr><td class="col-name">total_count_lag1 / total_count_lag12</td><td>Exact prior month / prior year, same self-join-on-exact-date pattern as the OBT.</td></tr>
+      <tr><td class="col-name">province_code / district_code / subdistrict_code</td><td>Plain columns, <b>no FK constraints</b> — this table is meant to be read standalone by an ML pipeline without joining back into the warehouse.</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ============================= STAGE 2 ============================= -->
+<section>
+  <h2>Stage 2 — Disease Surveillance <span class="stage-label">DDS · HDC · other_health · NCD/cause-of-death sources</span></h2>
+
+  <div class="card" id="dim_disease">
+    <h3>dim_disease <span class="tag tag-dim">dim</span><span class="rowcount">220 rows</span></h3>
+    <div class="grain">Grain: one row per (source_system, disease_code) — scoped <b>per source</b>, not a unified taxonomy.</div>
+    <div class="gotcha"><b>Design decision:</b> 7 sources' disease vocabularies are disjoint and don't line up 1:1 — DDS has 85 Thai disease names, sick_298group uses numbered labels ("104 เบาหวาน"), HDC uses short English codes (dm, ht, ihd...), cause_of_death uses its own phrasing. No reliable automated crosswalk exists between them, so cross-source disease rollups are explicitly out of scope — fabricating one would be worse than not having it.</div>
+  </div>
+
+  <div class="card" id="fact_disease_event">
+    <h3>fact_disease_event <span class="tag tag-fact">fact</span><span class="rowcount">3,223 rows</span></h3>
+    <div class="grain">Grain: geo_key (nullable) &times; date_key &times; disease_key &times; age_sex_key (nullable). Covers 7 count/death-based sources via generic measure slots (<code>case_count</code>, <code>death_count</code>, <code>rate_per_100k</code>, plus DDS-only <code>ipd_count</code>/<code>case_fatality_rate_pct</code>).</div>
+    <table class="schema">
+      <tr><th>Source</th><th>Rows</th><th>Geography</th></tr>
+      <tr><td>DDS health-region reports</td><td>189</td><td>None — <code>health_region_code</code> spans multiple provinces, not FK'd</td></tr>
+      <tr><td>cause_of_death (with-rate variant)</td><td>60</td><td>Province, matched via จังหวัด-prefix stripping</td></tr>
+      <tr><td>ncd_mortality_by_disease</td><td>2,340</td><td>Province + "ทั้งประเทศ" &rarr; country</td></tr>
+      <tr><td>sick_298group (long + wide, unpivoted)</td><td>150 + 360</td><td>Province</td></tr>
+      <tr><td>compare_cases_by_disease (unpivoted 2024/2025)</td><td>104</td><td>None &rarr; country (implicitly national)</td></tr>
+      <tr><td>compare_cases_by_subdistrict (unpivoted)</td><td>20</td><td>Subdistrict, tagged <code>all_diseases_combined</code> (no disease column in source)</td></tr>
+    </table>
+    <div class="gotcha"><b>Duplicate source avoided:</b> <code>cause_of_death_top10_no_rate</code> and <code>_with_rate</code> are confirmed identical data (same province/years/counts) — only the with-rate variant is loaded.</div>
+  </div>
+
+  <div class="card" id="fact_disease_incidence_hdc">
+    <h3>fact_disease_incidence_hdc <span class="tag tag-fact">fact</span><span class="rowcount">507,628 rows</span></h3>
+    <div class="grain">Grain: geo_key (district, nullable) &times; date_key &times; disease_key &times; grain (monthly|annual). HDC's target/result KPI tracking — genuinely different measure shape from count/death facts.</div>
+    <div class="gotcha"><b>Unpivoted</b> from <code>hdc_incidence_monthly</code>'s fiscal-year columns (<code>result10/11/12</code> = Oct&ndash;Dec of year-1, <code>result01..09</code> = Jan&ndash;Sep of the labeled year, per the Thai government fiscal year convention) into 12 calendar-month rows per source row.</div>
+    <div class="gotcha"><b>ihd is annual-only:</b> <code>hdc_incidence_annual</code> tracks disease='ihd' exclusively; the monthly table never has it. <code>target_alt</code>/<code>result_alt</code> hold a second target/result pair present in the annual source with no surviving documentation of how it differs from the primary pair.</div>
+    <div class="gotcha"><b>geo_key resolves via <code>areacode</code>'s first 4 digits</b> against <code>dim_geography.district_code</code> (confirmed 100% match, 1,669/1,669 distinct codes) — 21 source rows (252 of 498,936 monthly rows, 0.05%) have <code>province_code</code> disagreeing with the areacode's own embedded province prefix, a genuine source inconsistency; <code>geo_key</code> stays NULL for those rather than guessing.</div>
+    <div class="gotcha bad"><b>Performance bug found &amp; fixed:</b> the real fact grain is per-<i>facility</i> (<code>hospcode</code>+<code>areacode</code>), not per-district. A derived table's self-join initially matched on district-level <code>geo_key</code> alone, which fanned every hospital in a district against every other — 42.5M rows from 507K facts. Fixed by joining on the facility key instead, plus adding the missing composite index — without it, the corrected join was still a full table scan taking 85+ minutes.</div>
+  </div>
+
+  <div class="card" id="obt_disease_surveillance">
+    <h3>obt_disease_surveillance <span class="tag tag-obt">obt</span><span class="rowcount">510,851 rows</span></h3>
+    <div class="grain">UNION ALL of both disease fact tables (not a join) — they're genuinely different grains, so each side populates what it has and leaves the rest NULL, distinguished by a <code>grain</code> column.</div>
+  </div>
+
+  <div class="card" id="agg_disease_kpi_monthly">
+    <h3>agg_disease_kpi_monthly <span class="tag tag-agg">agg</span><span class="rowcount">507,817 rows</span></h3>
+    <div class="grain">Two natural grains, same UNION-not-join approach: <code>case_fatality_rate_pct</code> (DDS, year-grain, YoY matched on health_region_code since DDS has no geo_key) and <code>target_attainment_pct</code> (HDC, monthly+annual, YoY matched on facility key).</div>
+    <div class="gotcha">YoY for <code>target_attainment_pct</code> is a <b>percentage-point difference</b> (this period's attainment % minus last period's), not a relative percent change — avoids distorted math when comparing two already-percentage values.</div>
+  </div>
+
+  <h3 style="margin-top:28px; font-size:15px; color:var(--muted);">feat_geography_month extension (Stage 2)</h3>
+  <div class="card">
+    <div class="grain">5 new nullable columns added via <code>ALTER TABLE</code>: <code>incidence_rate_dm</code>, <code>_ht</code>, <code>_copd</code>, <code>_coronary</code> (monthly), <code>_ihd</code> (annual-only, so only populates January rows). Scoped to exactly the 5 diseases actually present in <code>fact_disease_incidence_hdc</code> — not all 11 HDC diseases exist at this grain (stroke/asthma/the 3 cancers/emphysema are tracked elsewhere, in tables not loaded into this fact).</div>
+  </div>
+</section>
+
+<!-- ============================= STAGE 3 ============================= -->
+<section>
+  <h2>Stage 3 — Economic &amp; Local-Area <span class="stage-label">factory_list · KMCH catchment sources</span></h2>
+
+  <div class="card" id="dim_factory">
+    <h3>dim_factory <span class="tag tag-dim">dim</span><span class="rowcount">5,976 rows</span></h3>
+    <div class="grain">Grain: one row per distinct <code>factory_reg_no</code> — collapsed from 11,862 registration records using the latest record per factory (same latest-wins convention as dim_geography).</div>
+  </div>
+
+  <div class="card" id="dim_place">
+    <h3>dim_place <span class="tag tag-dim">dim</span><span class="rowcount">1,672 rows</span></h3>
+    <div class="grain">Generic place dimension covering 8 KMCH-catchment sources: kmch_catchment_places (1,333), business_establishment (264), religious_site (23), safety_risk_point (14), edu_school (20), edu_university (2), edu_vocational_college (14), health_hospital (2).</div>
+    <div class="gotcha">Out of scope by design: <code>community_count_by_district_bkk</code>, <code>foreign_labor_permit_by_area_bkk</code>, and <code>labor_force_survey</code> are district/area-level aggregates, not individual places — they don't fit this place-grained dimension and remain available in Silver for a future extension.</div>
+  </div>
+
+  <div class="card" id="fact_factory_registration">
+    <h3>fact_factory_registration <span class="tag tag-fact">fact</span><span class="rowcount">11,862 rows</span></h3>
+    <div class="grain">Grain: one row per factory_list record — a real event log (multiple registration records per factory over time), not one-row-per-factory. <code>date_key</code> = permit_year_ce.</div>
+    <div class="gotcha bad"><b>Join fan-out bug found &amp; fixed:</b> geography resolves via a compound (district, sub_district) text match, since subdistrict names alone are ambiguous within Bangkok (e.g. "อนุสาวรีย์" matches more than one candidate before district disambiguation narrows it). Resolving this with a two-step inline <code>LEFT JOIN</code> still fanned out <i>before</i> disambiguation could apply, producing 815 duplicate rows (12,677 instead of 11,862). Fixed by pre-resolving each distinct (district, sub_district) pair to a single geo_key in a deduplicated lookup <i>before</i> joining to the fact query.</div>
+  </div>
+
+  <div class="card" id="fact_catchment_place">
+    <h3>fact_catchment_place <span class="tag tag-fact">fact</span><span class="rowcount">1,672 rows</span></h3>
+    <div class="grain">One row per <code>dim_place</code> row. Generic measure slots shared across the 8 sources (investment_thb, avg_distance_km, student_count, risk_flag_1..6, etc.) — each source populates what it has.</div>
+    <div class="gotcha">geo_key only resolves for <b>1 of the 8 sources</b> (kmch_catchment_places, via the same compound match as factory registration). The other 7 have either a free-text address only, or — confirmed by inspection — no geography column survived their Bronze→Silver transform at all (safety_risk_point's bronze table has a district column; Silver's doesn't).</div>
+    <div class="gotcha"><code>risk_flag_1</code>..<code>risk_flag_6</code> (safety_risk_point's r1&ndash;r6) are confirmed binary flags with no surviving documentation of what each specifically represents — kept opaque rather than guessing labels.</div>
+  </div>
+
+  <div class="card" id="obt_economic_by_geography">
+    <h3>obt_economic_by_geography <span class="tag tag-obt">obt</span><span class="rowcount">13,534 rows</span></h3>
+    <div class="grain">UNION ALL of both economic fact tables — fact_factory_registration has a real date dimension (permit year); fact_catchment_place's local-area sources are point-in-time snapshots with none.</div>
+  </div>
+
+  <div class="card" id="agg_economic_summary_yearly">
+    <h3>agg_economic_summary_yearly <span class="tag tag-agg">agg</span><span class="rowcount">344 rows</span></h3>
+    <div class="grain">Grain: geo_key &times; year. Factory-only (the only source with a real time dimension) — factory_count, investment sums, investment_per_worker, YoY growth.</div>
+    <div class="gotcha">Source data only spans permit years 2024&ndash;2025, so YoY growth is only computable for 2025 vs 2024. Most geo_keys show 0% YoY investment growth because the two registry snapshots report identical investment figures for most factories — confirmed real (one geo_key shows +1.3%, proving the calculation works when figures actually differ), not a bug.</div>
+  </div>
+
+  <div class="card" id="feat_factory">
+    <h3>feat_factory <span class="tag tag-feat">feat</span><span class="rowcount">5,976 rows</span></h3>
+    <div class="grain">Entity-grain feature store — one row per factory (vs. <code>feat_geography_month</code>'s geography&times;time grain), ready for clustering/segmentation. Uses each factory's <i>latest</i> registration snapshot, not a sum/average across years.</div>
+    <table class="schema">
+      <tr><th>Derived column</th><th>Formula</th></tr>
+      <tr><td class="col-name">investment_per_worker</td><td class="col-type">total_investment / total_workers</td></tr>
+      <tr><td class="col-name">workforce_female_pct</td><td class="col-type">female_workers / total_workers &times; 100</td></tr>
+    </table>
+    <div class="gotcha">No FK constraints — standalone, ML-readable without joining back into the warehouse, same intent as feat_geography_month.</div>
+  </div>
+</section>
+
+<!-- ============================= KPI CATALOG ============================= -->
+<section id="kpi-catalog">
+  <h2>KPI Catalog</h2>
+  <div class="intro-box">KPIs grounded in what's actually pre-computed in the Gold layer today — every one below is backed by a specific agg/obt column, not aspirational.</div>
+
+  <h3 style="font-size:15px; color:var(--muted);">Population &amp; Demographics</h3>
+  <div class="kpi-grid">
+    <div class="kpi-card"><h4>Population growth (MoM / YoY)</h4><div class="formula">obt_population_by_geography.pop_growth_mom_pct / pop_growth_yoy_pct</div><div class="src">Any geography, any available snapshot month</div></div>
+    <div class="kpi-card"><h4>Age dependency ratio</h4><div class="formula">agg_population_summary_yearly.age_dependency_ratio</div><div class="src">Country + Bangkok subdistricts; 2024 only for full coverage</div></div>
+    <div class="kpi-card"><h4>Aging index</h4><div class="formula">agg_population_summary_yearly.aging_index</div><div class="src">Same coverage as dependency ratio</div></div>
+    <div class="kpi-card"><h4>Non-Thai national %</h4><div class="formula">agg_population_summary_yearly.non_thai_national_pct</div><div class="src">Country + province, 2017&ndash;2025</div></div>
+    <div class="kpi-card"><h4>Persons per household</h4><div class="formula">obt_population_by_geography.persons_per_household</div><div class="src">Any geography/period with house_count</div></div>
+    <div class="kpi-card"><h4>Sex ratio</h4><div class="formula">obt_population_by_geography.sex_ratio (males per 100 females)</div><div class="src">Any geography/period</div></div>
+  </div>
+
+  <h3 style="font-size:15px; color:var(--muted); margin-top:24px;">Health Surveillance &amp; Disease Burden</h3>
+  <div class="kpi-grid">
+    <div class="kpi-card"><h4>Case-fatality rate</h4><div class="formula">agg_disease_kpi_monthly.case_fatality_rate_pct</div><div class="src">DDS health-region reports only</div></div>
+    <div class="kpi-card"><h4>Target attainment %</h4><div class="formula">agg_disease_kpi_monthly.target_attainment_pct</div><div class="src">HDC's 5 tracked NCDs (dm, ht, copd, coronary, ihd)</div></div>
+    <div class="kpi-card"><h4>Disease death rate per 100k</h4><div class="formula">fact_disease_event.rate_per_100k</div><div class="src">cause_of_death, ncd_mortality sources</div></div>
+    <div class="kpi-card"><h4>YoY KPI change</h4><div class="formula">agg_disease_kpi_monthly.yoy_change_pct</div><div class="src">Percentage-point delta, not relative %</div></div>
+  </div>
+
+  <h3 style="font-size:15px; color:var(--muted); margin-top:24px;">Economic / Local-Area</h3>
+  <div class="kpi-grid">
+    <div class="kpi-card"><h4>Investment per worker</h4><div class="formula">feat_factory.investment_per_worker</div><div class="src">Per factory, latest registration snapshot</div></div>
+    <div class="kpi-card"><h4>Workforce female %</h4><div class="formula">feat_factory.workforce_female_pct</div><div class="src">Per factory</div></div>
+    <div class="kpi-card"><h4>YoY investment growth</h4><div class="formula">agg_economic_summary_yearly.yoy_investment_growth_pct</div><div class="src">Geo &times; year, 2025 vs 2024 only (narrow source range)</div></div>
+    <div class="kpi-card"><h4>Catchment travel accessibility</h4><div class="formula">fact_catchment_place.avg_distance_km / avg_travel_time_mins</div><div class="src">kmch_catchment_places source only</div></div>
+  </div>
+</section>
+
+<!-- ============================= GOTCHAS INDEX ============================= -->
+<section id="gotchas">
+  <h2>Data-Quality Gotchas Index</h2>
+  <table class="schema">
+    <tr><th>Table</th><th>Issue</th><th>Resolution</th></tr>
+    <tr><td class="col-name">dim_geography</td><td>Historical renames caused duplicate rows per code</td><td>Dedupe by code alone, latest name wins</td></tr>
+    <tr><td class="col-name">fact_population_age_sex</td><td><code>is_headline_total</code> alone isn't SUM-safe (2&ndash;4&times; inflation)</td><td>Also filter sex='total' AND age_qualifier='total'</td></tr>
+    <tr><td class="col-name">agg_population_summary_yearly</td><td>No country-level base row ever exists in the area fact</td><td>Second NSO-sourced insert seeds country/province for uncovered years</td></tr>
+    <tr><td class="col-name">fact_disease_incidence_hdc</td><td>42.5M-row join fan-out (district-level join on facility-grain data)</td><td>Join on (hospcode, areacode) facility key instead of geo_key</td></tr>
+    <tr><td class="col-name">fact_disease_incidence_hdc</td><td>85-minute full table scan even after the join fix</td><td>Added missing composite index on the facility key</td></tr>
+    <tr><td class="col-name">fact_factory_registration</td><td>815 duplicate rows from inline geography disambiguation</td><td>Pre-resolve geography in a deduplicated lookup before the main join</td></tr>
+    <tr><td class="col-name">fact_catchment_place</td><td>safety_risk_point's district column didn't survive Bronze&rarr;Silver</td><td>geo_key stays NULL, documented rather than re-deriving from bronze</td></tr>
+    <tr><td class="col-name">Pipeline idempotency</td><td>Reruns without a full schema wipe failed on stale FK constraints</td><td><code>SET FOREIGN_KEY_CHECKS=0/1</code> wraps every referenced dimension's rebuild</td></tr>
+  </table>
+</section>
+
+<footer>
+  Generated for <code>clinical-dwh</code> — covers Gold Stages 1&ndash;3 (population, disease surveillance, economic/local-area).
+  Source: <a href="https://github.com/Panoppar/clinical-dwh">github.com/Panoppar/clinical-dwh</a>.
+</footer>
+
+</main>
+</div>
+</body>
+</html>
