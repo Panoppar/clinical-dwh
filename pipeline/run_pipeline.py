@@ -61,7 +61,28 @@ SILVER_SCRIPTS: list[str] = [
     "silver/16_create_silver_other_health_local_tables.sql",
     "silver/17_transform_silver_other_health_local.sql",
 ]
-GOLD_SCRIPTS: list[str] = []
+# Split in two: scripts before dim_geography is populated (pure DDL, or
+# dimensions sourced straight from Silver) vs. scripts after (fact tables
+# that JOIN against dim_geography, which transform_gold_dim_geography.py
+# populates in Python between the two lists -- it's created as an empty
+# table by 02_create_dim_geography.sql but only gets rows via that script).
+GOLD_SCRIPTS_PRE_GEO: list[str] = [
+    "gold/01_create_dim_date.sql",
+    "gold/02_create_dim_geography.sql",
+    "gold/03_create_dim_age_sex_and_component.sql",
+]
+GOLD_SCRIPTS_POST_GEO: list[str] = [
+    "gold/04_create_fact_population_by_area.sql",
+    "gold/05_transform_fact_population_by_area.sql",
+    "gold/06_create_fact_population_age_sex.sql",
+    "gold/07_transform_fact_population_age_sex.sql",
+    "gold/08_create_obt_population_by_geography.sql",
+    "gold/09_transform_obt_population_by_geography.sql",
+    "gold/10_create_agg_population_summary_yearly.sql",
+    "gold/11_transform_agg_population_summary_yearly.sql",
+    "gold/12_create_feat_geography_month.sql",
+    "gold/13_transform_feat_geography_month.sql",
+]
 
 
 def wait_for_mysql(host: str, port: int, user: str, password: str, label: str, timeout_s: int = 60) -> None:
@@ -174,6 +195,12 @@ def print_silver_summary() -> None:
     ])
 
 
+def print_gold_summary() -> None:
+    print_row_counts("gold", ["dim_date", "dim_geography", "dim_age_sex", "dim_population_component"])
+    print_row_counts("gold", ["fact_population_by_area", "fact_population_age_sex"])
+    print_row_counts("gold", ["obt_population_by_geography", "agg_population_summary_yearly", "feat_geography_month"])
+
+
 def main() -> None:
     wait_for_mysql(DWH_HOST, DWH_PORT, DWH_USER, DWH_PASSWORD, "warehouse-db")
 
@@ -234,14 +261,24 @@ def main() -> None:
         import transform_silver_hdc_manual
         transform_silver_hdc_manual.run()
 
-    if GOLD_SCRIPTS:
-        print("\n=== GOLD: create star schema + build dimensions/facts ===")
-        for script in GOLD_SCRIPTS:
+    if GOLD_SCRIPTS_PRE_GEO:
+        print("\n=== GOLD: create dimensions ===")
+        for script in GOLD_SCRIPTS_PRE_GEO:
+            run_sql_file(script)
+
+        print("\n=== GOLD: build dim_geography ===")
+        import transform_gold_dim_geography
+        transform_gold_dim_geography.run()
+
+        print("\n=== GOLD: create + load facts ===")
+        for script in GOLD_SCRIPTS_POST_GEO:
             run_sql_file(script)
 
     print_bronze_summary()
     if SILVER_SCRIPTS:
         print_silver_summary()
+    if GOLD_SCRIPTS_PRE_GEO:
+        print_gold_summary()
     print("\n[pipeline] completed successfully")
 
 
