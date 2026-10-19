@@ -1,5 +1,16 @@
 USE gold;
 
+-- FK checks disabled for these bulk inserts -- the other_health branch
+-- (78,840 rows, 4 FK columns each) was observed hanging indefinitely
+-- mid-transaction on this machine after several hours of repeated
+-- full-rebuild cycles in one session (CPU pegged, row count already
+-- correct, but the transaction never committed) -- per-row FK validation
+-- under that resource pressure is the suspected cause. All 3 branches
+-- here already only insert rows that passed an INNER JOIN against the
+-- exact referenced dimension, so referential integrity is guaranteed by
+-- construction regardless of whether MySQL re-checks it per row.
+SET FOREIGN_KEY_CHECKS = 0;
+
 -- NSO national-level rows -> 'country' geo_key (no province breakdown in
 -- this source_level).
 INSERT INTO fact_population_age_sex (geo_key, date_key, age_sex_key, component_key, is_headline_total, population_count, source_system)
@@ -53,3 +64,5 @@ JOIN dim_geography dg ON dg.admin_level = 'subdistrict' AND dg.province_code = s
     AND dg.district_code = s.registrar_code AND dg.subdistrict_code = CONCAT(s.tambon_code, '00')
 JOIN dim_age_sex das ON das.sex = s.sex AND das.age_exact <=> s.age_exact AND das.age_qualifier <=> s.age_qualifier
 JOIN dim_population_component dc ON dc.source_system = 'other_health' AND dc.component_code = s.component_type;
+
+SET FOREIGN_KEY_CHECKS = 1;

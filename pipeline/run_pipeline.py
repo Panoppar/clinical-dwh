@@ -130,7 +130,16 @@ def run_sql_file(relative_path: str) -> None:
     env["MYSQL_PWD"] = DWH_PASSWORD  # avoids exposing the password in argv/process list
     with open(sql_path, "rb") as f:
         subprocess.run(
-            ["mysql", "-h", DWH_HOST, "-P", str(DWH_PORT), "-u", DWH_USER],
+            # --default-character-set=utf8mb4 is explicit, not relied on as a
+            # client default -- confirmed by direct testing that MySQL's own
+            # server-image mysql client defaults to latin1, which silently
+            # corrupts Thai string-literal comparisons in WHERE/JOIN clauses
+            # (observed: a working 17-candidate match dropped to 7 under the
+            # wrong charset, with no error raised). This image's
+            # default-mysql-client (Debian mariadb-client) happened to
+            # default correctly, but that was never guaranteed by anything
+            # in this file.
+            ["mysql", "--default-character-set=utf8mb4", "-h", DWH_HOST, "-P", str(DWH_PORT), "-u", DWH_USER],
             stdin=f,
             env=env,
             check=True,
