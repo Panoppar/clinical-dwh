@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>clinical-dwh — Data Dictionary</title>
+<style>
+:root {
+  --bronze: #CD7F32; --silver: #9DA3A8; --gold: #D4AF37;
+  --ink: #1a1a2e; --muted: #5a6472; --bg: #fafbfc; --card: #ffffff;
+  --border: #e2e5ea; --accent: #2E75B6; --warn: #C00000; --ok: #2e7d32;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', -apple-system, Roboto, sans-serif; background: var(--bg); color: var(--ink);
+       margin: 0; padding: 0; line-height: 1.55; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 32px 24px 80px; }
+header.page { background: linear-gradient(135deg, #1a1a2e 0%, #2E75B6 100%); color: #fff; padding: 40px 24px; }
+header.page h1 { margin: 0 0 8px; font-size: 1.9rem; }
+header.page .sub { opacity: .88; font-size: .98rem; max-width: 900px; }
+header.page .meta { margin-top: 14px; font-size: .85rem; opacity: .75; }
+nav.toc { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; margin: 24px 0; }
+nav.toc a { color: var(--accent); text-decoration: none; margin-right: 18px; font-size: .92rem; }
+nav.toc a:hover { text-decoration: underline; }
+h2.section { font-size: 1.4rem; margin-top: 44px; padding-bottom: 8px; border-bottom: 3px solid var(--accent); }
+h2.section.bronze { border-color: var(--bronze); } h2.section.silver { border-color: var(--silver); }
+h2.section.gold { border-color: var(--gold); }
+h3.table-title { font-size: 1.08rem; margin: 28px 0 4px; display: flex; align-items: center; gap: 10px; }
+.badge { display: inline-block; font-size: .72rem; font-weight: 600; padding: 2px 9px; border-radius: 999px; color: #fff; }
+.badge.bronze { background: var(--bronze); } .badge.silver { background: #6b7280; } .badge.gold { background: #b8860b; }
+.badge.pending { background: var(--warn); } .badge.ok { background: var(--ok); }
+.rowcount { font-size: .85rem; color: var(--muted); font-weight: 500; }
+p.table-desc { color: var(--muted); margin: 4px 0 10px; font-size: .93rem; max-width: 900px; }
+table.cols { width: 100%; border-collapse: collapse; margin-bottom: 8px; background: var(--card);
+             border: 1px solid var(--border); border-radius: 8px; overflow: hidden; font-size: .87rem; }
+table.cols th { background: #f1f3f6; text-align: left; padding: 9px 12px; font-weight: 600; color: var(--muted);
+                 text-transform: uppercase; font-size: .72rem; letter-spacing: .03em; }
+table.cols td { padding: 8px 12px; border-top: 1px solid var(--border); vertical-align: top; }
+table.cols tr:nth-child(even) td { background: #fbfbfd; }
+code { background: #eef0f3; padding: 1px 6px; border-radius: 4px; font-size: .85em; color: #333; }
+.callout { border-left: 4px solid var(--accent); background: #eef5fc; padding: 12px 16px; margin: 16px 0; border-radius: 0 8px 8px 0; font-size: .92rem; }
+.callout.warn { border-color: var(--warn); background: #fdecec; }
+.callout.ok { border-color: var(--ok); background: #eaf6ea; }
+.flow { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 22px 0; }
+.flow .box { background: var(--card); border: 2px solid var(--border); border-radius: 10px; padding: 14px 18px; font-size: .88rem; min-width: 150px; }
+.flow .box.bronze { border-color: var(--bronze); } .flow .box.silver { border-color: #9DA3A8; } .flow .box.gold { border-color: var(--gold); }
+.flow .arrow { font-size: 1.4rem; color: var(--muted); }
+.svcgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 20px 0; }
+.svc { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+.svc h4 { margin: 0 0 6px; font-size: .96rem; }
+.svc p { margin: 0; font-size: .85rem; color: var(--muted); }
+.pyramid { display: flex; flex-direction: column; align-items: center; gap: 4px; margin: 24px 0; }
+.pyramid .level { color: #fff; padding: 10px 18px; border-radius: 6px; font-size: .85rem; text-align: center; }
+.kpi-table td.kpi-id { font-family: Consolas, monospace; font-weight: 600; white-space: nowrap; }
+footer.page { text-align: center; color: var(--muted); font-size: .8rem; padding: 30px 0; }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 800px) { .two-col { grid-template-columns: 1fr; } }
+ol.steps { counter-reset: step; list-style: none; padding: 0; margin: 18px 0; }
+ol.steps > li { counter-increment: step; position: relative; padding: 4px 0 18px 42px; border-left: 2px solid var(--border); margin-left: 15px; }
+ol.steps > li:last-child { border-left: 2px solid transparent; padding-bottom: 0; }
+ol.steps > li::before { content: counter(step); position: absolute; left: -15px; top: 2px; width: 28px; height: 28px;
+  background: var(--accent); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: .82rem; font-weight: 700; }
+ol.steps h4 { margin: 0 0 6px; font-size: 1rem; }
+pre { background: #1a1a2e; color: #e8eaf0; padding: 14px 16px; border-radius: 8px; overflow-x: auto; font-size: .84rem; line-height: 1.5; }
+pre code { background: none; color: inherit; padding: 0; }
+table.checklist td:first-child { width: 28px; text-align: center; }
+</style></head><body>
+<header class="page"><div class="wrap" style="padding:0">
+<h1>Data Dictionary</h1><div class="sub">Every Bronze, Silver, and Gold table and column in the live-API warehouse (NSO, BMA, DIW, DDS, HDC). Generated directly from information_schema + the pipeline's own build-time descriptions.</div>
+<div class="meta">clinical-dwh &middot; generated 2026-10-26 &middot; live-API scope only</div>
+</div></header>
+<div class="wrap"><nav class="toc"><strong>Jump to:</strong> <a href="#bronze">Bronze</a><a href="#silver">Silver</a><a href="#gold">Gold</a></nav>
+<h2 class="section bronze" id="bronze">Bronze Layer</h2>
+<h3 class="table-title">bronze.api_nso_income <span class="rowcount">15,400 rows</span></h3>
+<p class="table-desc">Raw 1:1 landing of NSO's household-income-by-province CSV (table SFD_SPB0802_66). No transformation.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>bronze_id</code></td><td>bigint</td><td>no</td><td>Surrogate primary key.</td></tr>
+<tr><td><code>source_file_name</code></td><td>varchar(500)</td><td>no</td><td>Landing-zone object key</td></tr>
+<tr><td><code>source_folder</code></td><td>varchar(255)</td><td>no</td><td>Landing-zone bucket/prefix</td></tr>
+<tr><td><code>source_sheet_name</code></td><td>varchar(255)</td><td>yes</td><td>Sheet name, where the source format has one (NULL otherwise).</td></tr>
+<tr><td><code>source_row_number</code></td><td>int</td><td>no</td><td>1-based row position within the source file/response.</td></tr>
+<tr><td><code>file_hash</code></td><td>varchar(64)</td><td>no</td><td>SHA-256 of the landed object's bytes.</td></tr>
+<tr><td><code>ingestion_batch_id</code></td><td>varchar(100)</td><td>no</td><td>Groups every row loaded in one pipeline run.</td></tr>
+<tr><td><code>ingested_at</code></td><td>timestamp</td><td>no</td><td>Timestamp this row was written to Bronze.</td></tr>
+<tr><td><code>source_system</code></td><td>varchar(50)</td><td>no</td><td>Which of NSO/BMA/DIW/DDS/HDC this row came from.</td></tr>
+<tr><td><code>raw_year</code></td><td>varchar(50)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_province</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_source_income1</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_source_income2</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_source_income3</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_soc_eco_class1</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_soc_eco_class2</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_value</code></td><td>varchar(100)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_unit</code></td><td>varchar(100)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_attribute</code></td><td>varchar(500)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_source</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+</table>
+<h3 class="table-title">bronze.api_bma_community <span class="rowcount">6,027 rows</span></h3>
+<p class="table-desc">Raw 1:1 landing of BMA's community-registry CSV, one resource per fiscal year (2565/2566/2567).</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>bronze_id</code></td><td>bigint</td><td>no</td><td>Surrogate primary key.</td></tr>
+<tr><td><code>source_file_name</code></td><td>varchar(500)</td><td>no</td><td>Landing-zone object key</td></tr>
+<tr><td><code>source_folder</code></td><td>varchar(255)</td><td>no</td><td>Landing-zone bucket/prefix</td></tr>
+<tr><td><code>source_sheet_name</code></td><td>varchar(255)</td><td>yes</td><td>Sheet name, where the source format has one (NULL otherwise).</td></tr>
+<tr><td><code>source_row_number</code></td><td>int</td><td>no</td><td>1-based row position within the source file/response.</td></tr>
+<tr><td><code>file_hash</code></td><td>varchar(64)</td><td>no</td><td>SHA-256 of the landed object's bytes.</td></tr>
+<tr><td><code>ingestion_batch_id</code></td><td>varchar(100)</td><td>no</td><td>Groups every row loaded in one pipeline run.</td></tr>
+<tr><td><code>ingested_at</code></td><td>timestamp</td><td>no</td><td>Timestamp this row was written to Bronze.</td></tr>
+<tr><td><code>source_system</code></td><td>varchar(50)</td><td>no</td><td>Which of NSO/BMA/DIW/DDS/HDC this row came from.</td></tr>
+<tr><td><code>raw_fiscal_year</code></td><td>varchar(50)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_district</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_subdistrict</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_name_of_community</code></td><td>varchar(500)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_type_of_community</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_number_of_population</code></td><td>varchar(50)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_male</code></td><td>varchar(50)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_female</code></td><td>varchar(50)</td><td>yes</td><td></td></tr>
+</table>
+<h3 class="table-title">bronze.api_diw_factory <span class="rowcount">13,683 rows</span></h3>
+<p class="table-desc">Raw landing of DIW's factory registry, amphoe-by-amphoe crawl across 3 provinces. operator_name/phone deliberately excluded (PII).</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>bronze_id</code></td><td>bigint</td><td>no</td><td>Surrogate primary key.</td></tr>
+<tr><td><code>source_file_name</code></td><td>varchar(500)</td><td>no</td><td>Landing-zone object key</td></tr>
+<tr><td><code>source_folder</code></td><td>varchar(255)</td><td>no</td><td>Landing-zone bucket/prefix</td></tr>
+<tr><td><code>source_sheet_name</code></td><td>varchar(255)</td><td>yes</td><td>Sheet name, where the source format has one (NULL otherwise).</td></tr>
+<tr><td><code>source_row_number</code></td><td>int</td><td>no</td><td>1-based row position within the source file/response.</td></tr>
+<tr><td><code>file_hash</code></td><td>varchar(64)</td><td>no</td><td>SHA-256 of the landed object's bytes.</td></tr>
+<tr><td><code>ingestion_batch_id</code></td><td>varchar(100)</td><td>no</td><td>Groups every row loaded in one pipeline run.</td></tr>
+<tr><td><code>ingested_at</code></td><td>timestamp</td><td>no</td><td>Timestamp this row was written to Bronze.</td></tr>
+<tr><td><code>source_system</code></td><td>varchar(50)</td><td>no</td><td>Which of NSO/BMA/DIW/DDS/HDC this row came from.</td></tr>
+<tr><td><code>raw_reg_no</code></td><td>varchar(100)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_factory_name</code></td><td>varchar(500)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_business_desc</code></td><td>text</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_address_no</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_moo</code></td><td>varchar(100)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_soi</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_road</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_tambon</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_amphoe</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_province</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_postcode</code></td><td>varchar(50)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_factory_type_code</code></td><td>varchar(100)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_capital</code></td><td>varchar(100)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_workers</code></td><td>varchar(50)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_horsepower</code></td><td>varchar(50)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_tsic</code></td><td>varchar(100)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_old_reg_no</code></td><td>varchar(100)</td><td>yes</td><td></td></tr>
+</table>
+<h3 class="table-title">bronze.api_dds_disease_ranking <span class="badge pending">0 rows — DDS pending</span></h3>
+<p class="table-desc">Raw landing of DDS's priority disease-ranking PDF (Table 1 extraction). 0 rows -- DDS's own backend has returned a server-side DB-driver error since 2026-10-25.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>bronze_id</code></td><td>bigint</td><td>no</td><td>Surrogate primary key.</td></tr>
+<tr><td><code>source_file_name</code></td><td>varchar(500)</td><td>no</td><td>Landing-zone object key (source PDF)</td></tr>
+<tr><td><code>source_folder</code></td><td>varchar(255)</td><td>no</td><td>Landing-zone bucket/prefix</td></tr>
+<tr><td><code>source_sheet_name</code></td><td>varchar(255)</td><td>yes</td><td>Sheet name, where the source format has one (NULL otherwise).</td></tr>
+<tr><td><code>source_row_number</code></td><td>int</td><td>no</td><td>1-based row position within the source file/response.</td></tr>
+<tr><td><code>file_hash</code></td><td>varchar(64)</td><td>no</td><td>SHA-256 of the landed object's bytes.</td></tr>
+<tr><td><code>ingestion_batch_id</code></td><td>varchar(100)</td><td>no</td><td>Groups every row loaded in one pipeline run.</td></tr>
+<tr><td><code>ingested_at</code></td><td>timestamp</td><td>no</td><td>Timestamp this row was written to Bronze.</td></tr>
+<tr><td><code>source_system</code></td><td>varchar(50)</td><td>no</td><td>Which of NSO/BMA/DIW/DDS/HDC this row came from.</td></tr>
+<tr><td><code>raw_year</code></td><td>varchar(50)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_province_code</code></td><td>varchar(50)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_rank</code></td><td>varchar(50)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_disease_name</code></td><td>varchar(500)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_case_count</code></td><td>varchar(100)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_rate_per_100k</code></td><td>varchar(100)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_ipd_count</code></td><td>varchar(100)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_death_count</code></td><td>varchar(100)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_case_fatality_pct</code></td><td>varchar(100)</td><td>yes</td><td></td></tr>
+</table>
+<h3 class="table-title">bronze.api_hdc_report_catalog <span class="rowcount">116 rows</span></h3>
+<p class="table-desc">Reference/lookup: HDC report catalog (report_code -> name, subcatalog, years available). Not fact data.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>bronze_id</code></td><td>bigint</td><td>no</td><td>Surrogate primary key.</td></tr>
+<tr><td><code>source_file_name</code></td><td>varchar(500)</td><td>no</td><td>Landing-zone object key</td></tr>
+<tr><td><code>source_folder</code></td><td>varchar(255)</td><td>no</td><td>Landing-zone bucket/prefix</td></tr>
+<tr><td><code>source_sheet_name</code></td><td>varchar(255)</td><td>yes</td><td>Sheet name, where the source format has one (NULL otherwise).</td></tr>
+<tr><td><code>source_row_number</code></td><td>int</td><td>no</td><td>1-based row position within the source file/response.</td></tr>
+<tr><td><code>file_hash</code></td><td>varchar(64)</td><td>no</td><td>SHA-256 of the landed object's bytes.</td></tr>
+<tr><td><code>ingestion_batch_id</code></td><td>varchar(100)</td><td>no</td><td>Groups every row loaded in one pipeline run.</td></tr>
+<tr><td><code>ingested_at</code></td><td>timestamp</td><td>no</td><td>Timestamp this row was written to Bronze.</td></tr>
+<tr><td><code>source_system</code></td><td>varchar(50)</td><td>no</td><td>Which of NSO/BMA/DIW/DDS/HDC this row came from.</td></tr>
+<tr><td><code>raw_report_code</code></td><td>varchar(100)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_report_name</code></td><td>varchar(500)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_subcatalog_id</code></td><td>varchar(100)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_subcatalog_name</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_catalog_label</code></td><td>varchar(500)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_active</code></td><td>varchar(10)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_byear_list</code></td><td>varchar(255)</td><td>yes</td><td>Comma-separated list of fiscal years this report currently exposes</td></tr>
+</table>
+<h3 class="table-title">bronze.api_hdc_observations <span class="rowcount">163,219 rows</span></h3>
+<p class="table-desc">Raw EAV landing of HDC's health-status data API. One row per (report, year, zone, record, field) -- live reports vary column layout per report, so every field is kept generically rather than inventing a schema per report.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>bronze_id</code></td><td>bigint</td><td>no</td><td>Surrogate primary key.</td></tr>
+<tr><td><code>source_file_name</code></td><td>varchar(500)</td><td>no</td><td>Landing-zone object key</td></tr>
+<tr><td><code>source_folder</code></td><td>varchar(255)</td><td>no</td><td>Landing-zone bucket/prefix</td></tr>
+<tr><td><code>source_sheet_name</code></td><td>varchar(255)</td><td>yes</td><td>Sheet name, where the source format has one (NULL otherwise).</td></tr>
+<tr><td><code>source_row_number</code></td><td>int</td><td>no</td><td>1-based row position within the source file/response.</td></tr>
+<tr><td><code>file_hash</code></td><td>varchar(64)</td><td>no</td><td>SHA-256 of the landed object's bytes.</td></tr>
+<tr><td><code>ingestion_batch_id</code></td><td>varchar(100)</td><td>no</td><td>Groups every row loaded in one pipeline run.</td></tr>
+<tr><td><code>ingested_at</code></td><td>timestamp</td><td>no</td><td>Timestamp this row was written to Bronze.</td></tr>
+<tr><td><code>source_system</code></td><td>varchar(50)</td><td>no</td><td>Which of NSO/BMA/DIW/DDS/HDC this row came from.</td></tr>
+<tr><td><code>raw_report_code</code></td><td>varchar(100)</td><td>no</td><td></td></tr>
+<tr><td><code>raw_year</code></td><td>varchar(50)</td><td>no</td><td></td></tr>
+<tr><td><code>raw_zone</code></td><td>varchar(10)</td><td>no</td><td></td></tr>
+<tr><td><code>raw_record_index</code></td><td>int</td><td>no</td><td>Position of this record within the report response (0-based)</td></tr>
+<tr><td><code>raw_field_name</code></td><td>varchar(255)</td><td>no</td><td></td></tr>
+<tr><td><code>raw_field_value</code></td><td>text</td><td>yes</td><td></td></tr>
+</table>
+<h2 class="section silver" id="silver">Silver Layer</h2>
+<h3 class="table-title">silver.api_nso_income <span class="rowcount">15,400 rows</span></h3>
+<p class="table-desc">Cleansed NSO income: year cast Buddhist Era -> Christian Era, value cast to DECIMAL, text fields trimmed.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>silver_id</code></td><td>bigint</td><td>no</td><td></td></tr>
+<tr><td><code>year_be</code></td><td>smallint</td><td>no</td><td></td></tr>
+<tr><td><code>year_ce</code></td><td>smallint</td><td>no</td><td></td></tr>
+<tr><td><code>province</code></td><td>varchar(255)</td><td>no</td><td></td></tr>
+<tr><td><code>source_income1</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>source_income2</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>source_income3</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>soc_eco_class1</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>soc_eco_class2</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>value</code></td><td>decimal(18,2)</td><td>yes</td><td></td></tr>
+<tr><td><code>unit</code></td><td>varchar(100)</td><td>yes</td><td></td></tr>
+<tr><td><code>attribute_note</code></td><td>varchar(500)</td><td>yes</td><td>NSO's own footnote text, e.g. superscript-W marker meaning "0 from a small survey sample"</td></tr>
+<tr><td><code>source_agency</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+</table>
+<h3 class="table-title">silver.api_bma_community <span class="rowcount">6,027 rows</span></h3>
+<p class="table-desc">Cleansed BMA community: fiscal_year BE->CE, population/male/female cast to INT.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>silver_id</code></td><td>bigint</td><td>no</td><td></td></tr>
+<tr><td><code>fiscal_year_be</code></td><td>smallint</td><td>no</td><td></td></tr>
+<tr><td><code>fiscal_year_ce</code></td><td>smallint</td><td>no</td><td></td></tr>
+<tr><td><code>district</code></td><td>varchar(255)</td><td>no</td><td></td></tr>
+<tr><td><code>subdistrict</code></td><td>varchar(255)</td><td>no</td><td></td></tr>
+<tr><td><code>name_of_community</code></td><td>varchar(500)</td><td>no</td><td></td></tr>
+<tr><td><code>type_of_community</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>population</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>male</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>female</code></td><td>int</td><td>yes</td><td></td></tr>
+</table>
+<h3 class="table-title">silver.api_diw_factory <span class="rowcount">13,683 rows</span></h3>
+<p class="table-desc">Cleansed DIW factory: capital/horsepower cast to DECIMAL, workers to INT. PII exclusion carries through from Bronze.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>silver_id</code></td><td>bigint</td><td>no</td><td></td></tr>
+<tr><td><code>reg_no</code></td><td>varchar(100)</td><td>no</td><td></td></tr>
+<tr><td><code>factory_name</code></td><td>varchar(500)</td><td>yes</td><td></td></tr>
+<tr><td><code>business_desc</code></td><td>text</td><td>yes</td><td></td></tr>
+<tr><td><code>address_no</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>moo</code></td><td>varchar(100)</td><td>yes</td><td></td></tr>
+<tr><td><code>soi</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>road</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>tambon</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>amphoe</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>province</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>postcode</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>factory_type_code</code></td><td>varchar(100)</td><td>yes</td><td></td></tr>
+<tr><td><code>capital</code></td><td>decimal(18,2)</td><td>yes</td><td></td></tr>
+<tr><td><code>workers</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>horsepower</code></td><td>decimal(12,2)</td><td>yes</td><td></td></tr>
+<tr><td><code>tsic</code></td><td>varchar(100)</td><td>yes</td><td></td></tr>
+<tr><td><code>old_reg_no</code></td><td>varchar(100)</td><td>yes</td><td></td></tr>
+</table>
+<h3 class="table-title">silver.api_dds_disease_ranking <span class="badge pending">0 rows — DDS pending</span></h3>
+<p class="table-desc">Cleansed DDS: rank/metrics cast to numeric (thousands-separator-safe). 0 rows -- same DDS outage as Bronze.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>silver_id</code></td><td>bigint</td><td>no</td><td></td></tr>
+<tr><td><code>year_ce</code></td><td>smallint</td><td>no</td><td></td></tr>
+<tr><td><code>province_code</code></td><td>varchar(10)</td><td>no</td><td></td></tr>
+<tr><td><code>rank</code></td><td>smallint</td><td>yes</td><td></td></tr>
+<tr><td><code>disease_name</code></td><td>varchar(500)</td><td>no</td><td></td></tr>
+<tr><td><code>case_count</code></td><td>decimal(14,2)</td><td>yes</td><td></td></tr>
+<tr><td><code>rate_per_100k</code></td><td>decimal(14,4)</td><td>yes</td><td></td></tr>
+<tr><td><code>ipd_count</code></td><td>decimal(14,2)</td><td>yes</td><td></td></tr>
+<tr><td><code>death_count</code></td><td>decimal(14,2)</td><td>yes</td><td></td></tr>
+<tr><td><code>case_fatality_pct</code></td><td>decimal(8,4)</td><td>yes</td><td></td></tr>
+</table>
+<h3 class="table-title">silver.api_hdc_observations <span class="rowcount">163,219 rows</span></h3>
+<p class="table-desc">Cleansed HDC EAV: report_name resolved via join against the Bronze catalog, year BE->CE. field_value stays TEXT -- ~116 reports mix counts/rates/percentages under the same generic column, so per-report typing is a Gold concern.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>silver_id</code></td><td>bigint</td><td>no</td><td></td></tr>
+<tr><td><code>report_code</code></td><td>varchar(100)</td><td>no</td><td></td></tr>
+<tr><td><code>report_name</code></td><td>varchar(500)</td><td>yes</td><td></td></tr>
+<tr><td><code>year_be</code></td><td>smallint</td><td>no</td><td></td></tr>
+<tr><td><code>year_ce</code></td><td>smallint</td><td>no</td><td></td></tr>
+<tr><td><code>zone</code></td><td>varchar(10)</td><td>no</td><td></td></tr>
+<tr><td><code>record_index</code></td><td>int</td><td>no</td><td></td></tr>
+<tr><td><code>field_name</code></td><td>varchar(255)</td><td>no</td><td></td></tr>
+<tr><td><code>field_value</code></td><td>varchar(1000)</td><td>yes</td><td>kept as text -- cast per-report in Gold, mirrors silver.hdc_indicator_observations</td></tr>
+</table>
+<h2 class="section gold" id="gold">Gold Layer</h2>
+<h3 class="table-title">gold.dim_date <span class="rowcount">5 rows</span></h3>
+<p class="table-desc">Calendar-year dimension spanning every year observed across the 5 sources.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>date_key</code></td><td>int unsigned</td><td>no</td><td>year_ce, e.g. 2025</td></tr>
+<tr><td><code>year_ce</code></td><td>smallint</td><td>no</td><td></td></tr>
+<tr><td><code>year_be</code></td><td>smallint</td><td>no</td><td></td></tr>
+</table>
+<h3 class="table-title">gold.dim_geography <span class="rowcount">451 rows</span></h3>
+<p class="table-desc">Province/district/subdistrict hierarchy, built purely from the live sources' own plain-text geographic labels (NOT DOPA codes -- that dimension was removed with the old Gold layer). Confirmed BMA.district and DIW.amphoe match character-for-character for Bangkok.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>geo_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>admin_level</code></td><td>varchar(12)</td><td>no</td><td>province | district | subdistrict</td></tr>
+<tr><td><code>province_name</code></td><td>varchar(150)</td><td>no</td><td></td></tr>
+<tr><td><code>district_name</code></td><td>varchar(150)</td><td>yes</td><td>NULL at province level</td></tr>
+<tr><td><code>subdistrict_name</code></td><td>varchar(150)</td><td>yes</td><td>NULL above subdistrict level</td></tr>
+<tr><td><code>parent_geo_key</code></td><td>int unsigned</td><td>yes</td><td></td></tr>
+<tr><td><code>source_systems</code></td><td>varchar(100)</td><td>no</td><td>which of NSO/BMA/DIW contributed this row, comma-separated</td></tr>
+</table>
+<h3 class="table-title">gold.dim_industry <span class="rowcount">881 rows</span></h3>
+<p class="table-desc">Distinct (TSIC code, factory_type_code) combinations from DIW -- Thailand Standard Industrial Classification, carried as-is (no decode table available).</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>industry_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>tsic_code</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>factory_type_code</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+</table>
+<h3 class="table-title">gold.dim_hdc_report <span class="rowcount">116 rows</span></h3>
+<p class="table-desc">HDC report reference, promoted from bronze.api_hdc_report_catalog.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>report_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>report_code</code></td><td>varchar(100)</td><td>no</td><td></td></tr>
+<tr><td><code>report_name</code></td><td>varchar(500)</td><td>yes</td><td></td></tr>
+<tr><td><code>subcatalog_name</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>years_available</code></td><td>varchar(255)</td><td>yes</td><td>comma-separated BE years, from byear_list</td></tr>
+</table>
+<h3 class="table-title">gold.dim_disease <span class="badge pending">0 rows — DDS pending</span></h3>
+<p class="table-desc">Distinct disease names from DDS. 0 rows -- same DDS outage as Bronze/Silver; structurally ready.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>disease_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>disease_name</code></td><td>varchar(500)</td><td>no</td><td></td></tr>
+</table>
+<h3 class="table-title">gold.fact_income <span class="rowcount">15,400 rows</span></h3>
+<p class="table-desc">NSO income fact, resolved to dim_geography (province) and dim_date.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>fact_id</code></td><td>bigint</td><td>no</td><td></td></tr>
+<tr><td><code>geo_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>date_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>source_income1</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>source_income2</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>source_income3</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>soc_eco_class1</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>soc_eco_class2</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>income_value</code></td><td>decimal(18,2)</td><td>yes</td><td></td></tr>
+</table>
+<h3 class="table-title">gold.fact_factory <span class="rowcount">13,683 rows</span></h3>
+<p class="table-desc">DIW factory fact, one row per registered factory, resolved to dim_geography (amphoe/district where available) and dim_industry.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>fact_id</code></td><td>bigint</td><td>no</td><td></td></tr>
+<tr><td><code>geo_key</code></td><td>int unsigned</td><td>no</td><td>resolved at amphoe/district grain where available, else province</td></tr>
+<tr><td><code>industry_key</code></td><td>int unsigned</td><td>yes</td><td></td></tr>
+<tr><td><code>reg_no</code></td><td>varchar(100)</td><td>no</td><td></td></tr>
+<tr><td><code>factory_name</code></td><td>varchar(500)</td><td>yes</td><td></td></tr>
+<tr><td><code>capital</code></td><td>decimal(18,2)</td><td>yes</td><td></td></tr>
+<tr><td><code>workers</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>horsepower</code></td><td>decimal(12,2)</td><td>yes</td><td></td></tr>
+</table>
+<h3 class="table-title">gold.fact_community_population <span class="rowcount">6,027 rows</span></h3>
+<p class="table-desc">BMA community population fact, resolved to dim_geography (subdistrict where available) and dim_date.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>fact_id</code></td><td>bigint</td><td>no</td><td></td></tr>
+<tr><td><code>geo_key</code></td><td>int unsigned</td><td>no</td><td>resolved at subdistrict grain where available, else district</td></tr>
+<tr><td><code>date_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>name_of_community</code></td><td>varchar(500)</td><td>no</td><td></td></tr>
+<tr><td><code>type_of_community</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>population</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>male</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>female</code></td><td>int</td><td>yes</td><td></td></tr>
+</table>
+<h3 class="table-title">gold.fact_disease_ranking <span class="badge pending">0 rows — DDS pending</span></h3>
+<p class="table-desc">DDS disease-ranking fact. 0 rows -- same DDS outage; resolved to dim_geography (via province code translation), dim_date, dim_disease once populated.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>fact_id</code></td><td>bigint</td><td>no</td><td></td></tr>
+<tr><td><code>geo_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>date_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>disease_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>rank</code></td><td>smallint</td><td>yes</td><td></td></tr>
+<tr><td><code>case_count</code></td><td>decimal(14,2)</td><td>yes</td><td></td></tr>
+<tr><td><code>rate_per_100k</code></td><td>decimal(14,4)</td><td>yes</td><td></td></tr>
+<tr><td><code>ipd_count</code></td><td>decimal(14,2)</td><td>yes</td><td></td></tr>
+<tr><td><code>death_count</code></td><td>decimal(14,2)</td><td>yes</td><td></td></tr>
+<tr><td><code>case_fatality_pct</code></td><td>decimal(8,4)</td><td>yes</td><td></td></tr>
+</table>
+<h3 class="table-title">gold.fact_hdc_observation <span class="rowcount">8,485 rows</span></h3>
+<p class="table-desc">HDC fact, PIVOTED from Silver's EAV rows into named columns (target/result/f3_rate/male/female/total) for the headline fields the KPI tree needs. geo_key is resolved from the record's own area name when the report's layout carries one (province_keyed layout); NULL is a real 'not area-resolvable from this report', not a loading gap.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>fact_id</code></td><td>bigint</td><td>no</td><td></td></tr>
+<tr><td><code>report_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>date_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>zone</code></td><td>varchar(10)</td><td>no</td><td></td></tr>
+<tr><td><code>record_index</code></td><td>int</td><td>no</td><td></td></tr>
+<tr><td><code>geo_key</code></td><td>int unsigned</td><td>yes</td><td></td></tr>
+<tr><td><code>area_name_raw</code></td><td>varchar(255)</td><td>yes</td><td>a_name as the report itself stated it, kept verbatim alongside the resolved geo_key</td></tr>
+<tr><td><code>target</code></td><td>decimal(18,2)</td><td>yes</td><td></td></tr>
+<tr><td><code>result</code></td><td>decimal(18,2)</td><td>yes</td><td></td></tr>
+<tr><td><code>f3_rate</code></td><td>decimal(18,4)</td><td>yes</td><td>the report's own formula-calculated rate, e.g. result/target*100000</td></tr>
+<tr><td><code>male</code></td><td>decimal(18,2)</td><td>yes</td><td></td></tr>
+<tr><td><code>female</code></td><td>decimal(18,2)</td><td>yes</td><td></td></tr>
+<tr><td><code>total</code></td><td>decimal(18,2)</td><td>yes</td><td></td></tr>
+</table>
+<h3 class="table-title">gold.agg_economic_by_province_year <span class="rowcount">154 rows</span></h3>
+<p class="table-desc">Feeds Dashboard 2 (Economic & Industrial Development). One row per province x year.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>agg_id</code></td><td>bigint</td><td>no</td><td></td></tr>
+<tr><td><code>province_name</code></td><td>varchar(150)</td><td>no</td><td></td></tr>
+<tr><td><code>year_ce</code></td><td>smallint</td><td>no</td><td></td></tr>
+<tr><td><code>avg_monthly_income</code></td><td>decimal(18,2)</td><td>yes</td><td>K-ECO-01</td></tr>
+<tr><td><code>regular_income_share</code></td><td>decimal(8,4)</td><td>yes</td><td>K-ECO-02</td></tr>
+<tr><td><code>factory_count</code></td><td>int</td><td>yes</td><td>K-ECO-03 (snapshot, not year-specific -- DIW is a single current-state crawl)</td></tr>
+<tr><td><code>avg_factory_capital</code></td><td>decimal(18,2)</td><td>yes</td><td>K-ECO-04</td></tr>
+<tr><td><code>avg_workers_per_factory</code></td><td>decimal(10,2)</td><td>yes</td><td>K-ECO-05</td></tr>
+<tr><td><code>total_industrial_workforce</code></td><td>bigint</td><td>yes</td><td>K-ECO-06</td></tr>
+<tr><td><code>income_to_capital_ratio</code></td><td>decimal(14,6)</td><td>yes</td><td>K-ECO-08</td></tr>
+</table>
+<h3 class="table-title">gold.agg_population_by_district_year <span class="rowcount">150 rows</span></h3>
+<p class="table-desc">Feeds Dashboard 3 (Population & Community). One row per district x fiscal year.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>agg_id</code></td><td>bigint</td><td>no</td><td></td></tr>
+<tr><td><code>province_name</code></td><td>varchar(150)</td><td>no</td><td></td></tr>
+<tr><td><code>district_name</code></td><td>varchar(150)</td><td>no</td><td></td></tr>
+<tr><td><code>fiscal_year_ce</code></td><td>smallint</td><td>no</td><td></td></tr>
+<tr><td><code>total_population</code></td><td>bigint</td><td>yes</td><td>K-DEM-01</td></tr>
+<tr><td><code>sex_ratio</code></td><td>decimal(10,4)</td><td>yes</td><td>K-DEM-02, male/female</td></tr>
+<tr><td><code>community_count</code></td><td>int</td><td>yes</td><td>K-DEM-03 total</td></tr>
+<tr><td><code>crowded_population_share</code></td><td>decimal(8,4)</td><td>yes</td><td>K-DEM-04</td></tr>
+<tr><td><code>yoy_growth_rate</code></td><td>decimal(10,6)</td><td>yes</td><td>K-DEM-05, NULL for the earliest year in range</td></tr>
+</table>
+<h3 class="table-title">gold.agg_health_kpi_by_province_year <span class="rowcount">45 rows</span></h3>
+<p class="table-desc">Feeds Dashboard 4 (Public Health Surveillance). One row per province x year.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>agg_id</code></td><td>bigint</td><td>no</td><td></td></tr>
+<tr><td><code>province_name</code></td><td>varchar(150)</td><td>no</td><td></td></tr>
+<tr><td><code>year_ce</code></td><td>smallint</td><td>no</td><td></td></tr>
+<tr><td><code>avg_disease_incidence_rate</code></td><td>decimal(14,4)</td><td>yes</td><td>K-HLT-01 (DDS, pending)</td></tr>
+<tr><td><code>avg_case_fatality_pct</code></td><td>decimal(8,4)</td><td>yes</td><td>K-HLT-02 (DDS, pending)</td></tr>
+<tr><td><code>avg_ncd_target_attainment</code></td><td>decimal(10,4)</td><td>yes</td><td>K-HLT-03, result/target averaged across HDC reports</td></tr>
+<tr><td><code>avg_hdc_calculated_rate</code></td><td>decimal(14,4)</td><td>yes</td><td>K-HLT-04, avg F3 across HDC reports</td></tr>
+<tr><td><code>occupational_report_count</code></td><td>int</td><td>yes</td><td>K-HLT-05</td></tr>
+<tr><td><code>air_pollution_report_count</code></td><td>int</td><td>yes</td><td>K-HLT-06</td></tr>
+<tr><td><code>surveillance_completeness_pct</code></td><td>decimal(8,4)</td><td>yes</td><td>K-HLT-09</td></tr>
+</table>
+<h3 class="table-title">gold.obt_regional_composite_index <span class="rowcount">154 rows</span></h3>
+<p class="table-desc">Feeds Dashboard 1 (Executive Overview). Level-3 strategic KPIs (K-STR-01/02/03), min-max normalized 0-100, equal-weighted across components.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>obt_id</code></td><td>bigint</td><td>no</td><td></td></tr>
+<tr><td><code>province_name</code></td><td>varchar(150)</td><td>no</td><td></td></tr>
+<tr><td><code>year_ce</code></td><td>smallint</td><td>no</td><td></td></tr>
+<tr><td><code>socioeconomic_health_vulnerability_index</code></td><td>decimal(6,2)</td><td>yes</td><td>K-STR-01, 0-100, higher = more vulnerable</td></tr>
+<tr><td><code>industrial_health_impact_index</code></td><td>decimal(6,2)</td><td>yes</td><td>K-STR-02, 0-100, higher = more impact</td></tr>
+<tr><td><code>catchment_economic_vitality_score</code></td><td>decimal(6,2)</td><td>yes</td><td>K-STR-03, 0-100, higher = more vitality</td></tr>
+</table></div>
+<footer class="page">clinical-dwh documentation &middot; see docs/03_external_reference_sources.md for full provenance notes</footer>
+</body></html>

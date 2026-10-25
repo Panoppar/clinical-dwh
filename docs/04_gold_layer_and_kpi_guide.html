@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>clinical-dwh — Gold Layer &amp; KPI Guide</title>
+<style>
+:root {
+  --bronze: #CD7F32; --silver: #9DA3A8; --gold: #D4AF37;
+  --ink: #1a1a2e; --muted: #5a6472; --bg: #fafbfc; --card: #ffffff;
+  --border: #e2e5ea; --accent: #2E75B6; --warn: #C00000; --ok: #2e7d32;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', -apple-system, Roboto, sans-serif; background: var(--bg); color: var(--ink);
+       margin: 0; padding: 0; line-height: 1.55; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 32px 24px 80px; }
+header.page { background: linear-gradient(135deg, #1a1a2e 0%, #2E75B6 100%); color: #fff; padding: 40px 24px; }
+header.page h1 { margin: 0 0 8px; font-size: 1.9rem; }
+header.page .sub { opacity: .88; font-size: .98rem; max-width: 900px; }
+header.page .meta { margin-top: 14px; font-size: .85rem; opacity: .75; }
+nav.toc { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; margin: 24px 0; }
+nav.toc a { color: var(--accent); text-decoration: none; margin-right: 18px; font-size: .92rem; }
+nav.toc a:hover { text-decoration: underline; }
+h2.section { font-size: 1.4rem; margin-top: 44px; padding-bottom: 8px; border-bottom: 3px solid var(--accent); }
+h2.section.bronze { border-color: var(--bronze); } h2.section.silver { border-color: var(--silver); }
+h2.section.gold { border-color: var(--gold); }
+h3.table-title { font-size: 1.08rem; margin: 28px 0 4px; display: flex; align-items: center; gap: 10px; }
+.badge { display: inline-block; font-size: .72rem; font-weight: 600; padding: 2px 9px; border-radius: 999px; color: #fff; }
+.badge.bronze { background: var(--bronze); } .badge.silver { background: #6b7280; } .badge.gold { background: #b8860b; }
+.badge.pending { background: var(--warn); } .badge.ok { background: var(--ok); }
+.rowcount { font-size: .85rem; color: var(--muted); font-weight: 500; }
+p.table-desc { color: var(--muted); margin: 4px 0 10px; font-size: .93rem; max-width: 900px; }
+table.cols { width: 100%; border-collapse: collapse; margin-bottom: 8px; background: var(--card);
+             border: 1px solid var(--border); border-radius: 8px; overflow: hidden; font-size: .87rem; }
+table.cols th { background: #f1f3f6; text-align: left; padding: 9px 12px; font-weight: 600; color: var(--muted);
+                 text-transform: uppercase; font-size: .72rem; letter-spacing: .03em; }
+table.cols td { padding: 8px 12px; border-top: 1px solid var(--border); vertical-align: top; }
+table.cols tr:nth-child(even) td { background: #fbfbfd; }
+code { background: #eef0f3; padding: 1px 6px; border-radius: 4px; font-size: .85em; color: #333; }
+.callout { border-left: 4px solid var(--accent); background: #eef5fc; padding: 12px 16px; margin: 16px 0; border-radius: 0 8px 8px 0; font-size: .92rem; }
+.callout.warn { border-color: var(--warn); background: #fdecec; }
+.callout.ok { border-color: var(--ok); background: #eaf6ea; }
+.flow { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 22px 0; }
+.flow .box { background: var(--card); border: 2px solid var(--border); border-radius: 10px; padding: 14px 18px; font-size: .88rem; min-width: 150px; }
+.flow .box.bronze { border-color: var(--bronze); } .flow .box.silver { border-color: #9DA3A8; } .flow .box.gold { border-color: var(--gold); }
+.flow .arrow { font-size: 1.4rem; color: var(--muted); }
+.svcgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 20px 0; }
+.svc { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+.svc h4 { margin: 0 0 6px; font-size: .96rem; }
+.svc p { margin: 0; font-size: .85rem; color: var(--muted); }
+.pyramid { display: flex; flex-direction: column; align-items: center; gap: 4px; margin: 24px 0; }
+.pyramid .level { color: #fff; padding: 10px 18px; border-radius: 6px; font-size: .85rem; text-align: center; }
+.kpi-table td.kpi-id { font-family: Consolas, monospace; font-weight: 600; white-space: nowrap; }
+footer.page { text-align: center; color: var(--muted); font-size: .8rem; padding: 30px 0; }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 800px) { .two-col { grid-template-columns: 1fr; } }
+ol.steps { counter-reset: step; list-style: none; padding: 0; margin: 18px 0; }
+ol.steps > li { counter-increment: step; position: relative; padding: 4px 0 18px 42px; border-left: 2px solid var(--border); margin-left: 15px; }
+ol.steps > li:last-child { border-left: 2px solid transparent; padding-bottom: 0; }
+ol.steps > li::before { content: counter(step); position: absolute; left: -15px; top: 2px; width: 28px; height: 28px;
+  background: var(--accent); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: .82rem; font-weight: 700; }
+ol.steps h4 { margin: 0 0 6px; font-size: 1rem; }
+pre { background: #1a1a2e; color: #e8eaf0; padding: 14px 16px; border-radius: 8px; overflow-x: auto; font-size: .84rem; line-height: 1.5; }
+pre code { background: none; color: inherit; padding: 0; }
+table.checklist td:first-child { width: 28px; text-align: center; }
+</style></head><body>
+<header class="page"><div class="wrap" style="padding:0">
+<h1>Gold Layer &amp; KPI Guide</h1><div class="sub">Bottom-up KPI pyramid, the 4 dashboards built from it, and the Gold tables that feed them.</div>
+<div class="meta">clinical-dwh &middot; generated 2026-10-26 &middot; live-API scope only</div>
+</div></header>
+<div class="wrap">
+<nav class="toc"><strong>Jump to:</strong> <a href="#pyramid">KPI Pyramid</a><a href="#dashboards">Dashboards</a><a href="#gold">Gold Tables</a><a href="#metabase">Metabase</a></nav>
+
+<p>Full detail (every KPI's exact formula, source column, and grain) lives in
+<code>Excel\KPI_Tree_and_Dashboard_Design.xlsx</code> (tabs <code>KPI_Tree</code> / <code>Dashboard_Design</code>).
+This page is the web-readable summary.</p>
+
+<h2 class="section gold" id="pyramid">KPI Pyramid (Bottom-Up)</h2>
+<div class="pyramid"><div class="level" style="background:#2E75B6;color:#fff;width:46%;"><strong>Level 3 — Strategic (Apex)</strong><br><small>K-STR-01 Regional Socioeconomic-Health Vulnerability Index, K-STR-02 Industrial-Health Impact Index, K-STR-03 Catchment Economic Vitality Score</small></div><div class="level" style="background:#5B9BD5;color:#1a1a2e;width:64%;"><strong>Level 2 — Tactical / Diagnostic</strong><br><small>K-ECO-08/09/10, K-DEM-06, K-HLT-07/08/09</small></div><div class="level" style="background:#9DC3E6;color:#1a1a2e;width:82%;"><strong>Level 1 — Operational</strong><br><small>K-ECO-01..07, K-DEM-01..05, K-HLT-01..06</small></div><div class="level" style="background:#D9D9D9;color:#1a1a2e;width:100%;"><strong>Level 0 — Base Measures (raw Silver facts)</strong><br><small>B-ECO-01..05, B-DEM-01..02, B-HLT-01..03</small></div></div>
+<p style="text-align:center;color:var(--muted);font-size:.88rem;">38 KPI nodes total. Base measures roll up into
+operational KPIs, which combine into tactical/diagnostic KPIs, which combine into the 3 strategic composite
+indices at the apex.</p>
+
+<h2 class="section gold" id="dashboards">4 Dashboards (built manually in Metabase)</h2>
+<table class="cols">
+<tr><th>Dashboard</th><th>Audience</th><th>Feeds From</th></tr>
+<tr><td><strong>1. Executive Overview</strong></td><td>Leadership / cross-department</td><td><code>gold.obt_regional_composite_index</code> + all 3 agg_ tables</td></tr>
+<tr><td><strong>2. Economic &amp; Industrial Development</strong></td><td>Economic planners / DIW liaison</td><td><code>gold.agg_economic_by_province_year</code>, <code>fact_income</code>, <code>fact_factory</code></td></tr>
+<tr><td><strong>3. Population &amp; Community</strong></td><td>Social services / BMA liaison</td><td><code>gold.agg_population_by_district_year</code>, <code>fact_community_population</code></td></tr>
+<tr><td><strong>4. Public Health Surveillance</strong></td><td>Health dept / HDC &amp; DDS program officers</td><td><code>gold.agg_health_kpi_by_province_year</code>, <code>fact_disease_ranking</code>, <code>fact_hdc_observation</code></td></tr>
+</table>
+
+<h2 class="section gold" id="gold">Gold Table Reference</h2>
+<p>Full column-level detail is in <a href="02_data_dictionary.html">02_data_dictionary.html</a>. Quick map:</p>
+<div class="two-col">
+<div><h4>Dimensions</h4><ul>
+<li><code>dim_date</code>, <code>dim_geography</code>, <code>dim_industry</code>, <code>dim_hdc_report</code>, <code>dim_disease</code></li>
+</ul><h4>Facts</h4><ul>
+<li><code>fact_income</code>, <code>fact_factory</code>, <code>fact_community_population</code></li>
+<li><code>fact_disease_ranking</code> (0 rows, DDS pending)</li>
+<li><code>fact_hdc_observation</code> (pivoted from Silver's EAV shape)</li>
+</ul></div>
+<div><h4>Aggregates / Composite</h4><ul>
+<li><code>agg_economic_by_province_year</code></li>
+<li><code>agg_population_by_district_year</code></li>
+<li><code>agg_health_kpi_by_province_year</code></li>
+<li><code>obt_regional_composite_index</code> (K-STR-01/02/03)</li>
+</ul></div>
+</div>
+
+<h2 class="section gold" id="metabase">Metabase Connection</h2>
+<div class="callout ok">Fresh Metabase instance (old one dropped entirely 2026-10-26). Connects to
+<code>warehouse-db.gold</code> via the read-only <code>metabase_ro</code> account — same least-privilege
+enforcement as before, bronze/silver are not reachable from Metabase. All 14 Gold tables confirmed synced.
+Dashboards are being built manually via the Metabase UI, not generated by the pipeline.</div>
+</div>
+<footer class="page">clinical-dwh documentation &middot; see docs/03_external_reference_sources.md for full provenance notes</footer>
+</body></html>

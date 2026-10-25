@@ -1,5 +1,6 @@
-# Secrets — never commit real credentials, only .env.example
+# Secrets — never commit real credentials, only .env.example / *.example
 .env
+seaweedfs_s3_config.json
 
 # DOPA source files: ~95MB total (one CSV alone is 50MB), from the shared
 # Drive folder share_unprocessed_20261010/DOPA_population_by_month_and_area_checked.
@@ -21,6 +22,13 @@ external-sources/hdc_manual/
 external-sources/hdc_region6_13/
 external-sources/dds_health_region/
 external-sources/lat_krabang/
+
+# Province/subdistrict boundary GeoJSON for the Metabase choropleth map
+# (12.6MB combined -- too large for git and fully re-derivable). Source:
+# chingchai/OpenGISData-Thailand (GitHub, public), downloaded with
+# explicit approval; re-fetch provinces.geojson / amphoe.geojson /
+# subdistricts.geojson from that repo if this folder is ever missing.
+docs/maps/
 
 # OS/editor noise
 .DS_Store

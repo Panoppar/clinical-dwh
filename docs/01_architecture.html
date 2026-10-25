@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>clinical-dwh — Architecture</title>
+<style>
+:root {
+  --bronze: #CD7F32; --silver: #9DA3A8; --gold: #D4AF37;
+  --ink: #1a1a2e; --muted: #5a6472; --bg: #fafbfc; --card: #ffffff;
+  --border: #e2e5ea; --accent: #2E75B6; --warn: #C00000; --ok: #2e7d32;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', -apple-system, Roboto, sans-serif; background: var(--bg); color: var(--ink);
+       margin: 0; padding: 0; line-height: 1.55; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 32px 24px 80px; }
+header.page { background: linear-gradient(135deg, #1a1a2e 0%, #2E75B6 100%); color: #fff; padding: 40px 24px; }
+header.page h1 { margin: 0 0 8px; font-size: 1.9rem; }
+header.page .sub { opacity: .88; font-size: .98rem; max-width: 900px; }
+header.page .meta { margin-top: 14px; font-size: .85rem; opacity: .75; }
+nav.toc { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; margin: 24px 0; }
+nav.toc a { color: var(--accent); text-decoration: none; margin-right: 18px; font-size: .92rem; }
+nav.toc a:hover { text-decoration: underline; }
+h2.section { font-size: 1.4rem; margin-top: 44px; padding-bottom: 8px; border-bottom: 3px solid var(--accent); }
+h2.section.bronze { border-color: var(--bronze); } h2.section.silver { border-color: var(--silver); }
+h2.section.gold { border-color: var(--gold); }
+h3.table-title { font-size: 1.08rem; margin: 28px 0 4px; display: flex; align-items: center; gap: 10px; }
+.badge { display: inline-block; font-size: .72rem; font-weight: 600; padding: 2px 9px; border-radius: 999px; color: #fff; }
+.badge.bronze { background: var(--bronze); } .badge.silver { background: #6b7280; } .badge.gold { background: #b8860b; }
+.badge.pending { background: var(--warn); } .badge.ok { background: var(--ok); }
+.rowcount { font-size: .85rem; color: var(--muted); font-weight: 500; }
+p.table-desc { color: var(--muted); margin: 4px 0 10px; font-size: .93rem; max-width: 900px; }
+table.cols { width: 100%; border-collapse: collapse; margin-bottom: 8px; background: var(--card);
+             border: 1px solid var(--border); border-radius: 8px; overflow: hidden; font-size: .87rem; }
+table.cols th { background: #f1f3f6; text-align: left; padding: 9px 12px; font-weight: 600; color: var(--muted);
+                 text-transform: uppercase; font-size: .72rem; letter-spacing: .03em; }
+table.cols td { padding: 8px 12px; border-top: 1px solid var(--border); vertical-align: top; }
+table.cols tr:nth-child(even) td { background: #fbfbfd; }
+code { background: #eef0f3; padding: 1px 6px; border-radius: 4px; font-size: .85em; color: #333; }
+.callout { border-left: 4px solid var(--accent); background: #eef5fc; padding: 12px 16px; margin: 16px 0; border-radius: 0 8px 8px 0; font-size: .92rem; }
+.callout.warn { border-color: var(--warn); background: #fdecec; }
+.callout.ok { border-color: var(--ok); background: #eaf6ea; }
+.flow { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 22px 0; }
+.flow .box { background: var(--card); border: 2px solid var(--border); border-radius: 10px; padding: 14px 18px; font-size: .88rem; min-width: 150px; }
+.flow .box.bronze { border-color: var(--bronze); } .flow .box.silver { border-color: #9DA3A8; } .flow .box.gold { border-color: var(--gold); }
+.flow .arrow { font-size: 1.4rem; color: var(--muted); }
+.svcgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 20px 0; }
+.svc { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+.svc h4 { margin: 0 0 6px; font-size: .96rem; }
+.svc p { margin: 0; font-size: .85rem; color: var(--muted); }
+.pyramid { display: flex; flex-direction: column; align-items: center; gap: 4px; margin: 24px 0; }
+.pyramid .level { color: #fff; padding: 10px 18px; border-radius: 6px; font-size: .85rem; text-align: center; }
+.kpi-table td.kpi-id { font-family: Consolas, monospace; font-weight: 600; white-space: nowrap; }
+footer.page { text-align: center; color: var(--muted); font-size: .8rem; padding: 30px 0; }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 800px) { .two-col { grid-template-columns: 1fr; } }
+ol.steps { counter-reset: step; list-style: none; padding: 0; margin: 18px 0; }
+ol.steps > li { counter-increment: step; position: relative; padding: 4px 0 18px 42px; border-left: 2px solid var(--border); margin-left: 15px; }
+ol.steps > li:last-child { border-left: 2px solid transparent; padding-bottom: 0; }
+ol.steps > li::before { content: counter(step); position: absolute; left: -15px; top: 2px; width: 28px; height: 28px;
+  background: var(--accent); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: .82rem; font-weight: 700; }
+ol.steps h4 { margin: 0 0 6px; font-size: 1rem; }
+pre { background: #1a1a2e; color: #e8eaf0; padding: 14px 16px; border-radius: 8px; overflow-x: auto; font-size: .84rem; line-height: 1.5; }
+pre code { background: none; color: inherit; padding: 0; }
+table.checklist td:first-child { width: 28px; text-align: center; }
+</style></head><body>
+<header class="page"><div class="wrap" style="padding:0">
+<h1>System Architecture</h1><div class="sub">Live-API-only Medallion (Bronze/Silver/Gold) ELT pipeline. No flat files, no clinic/patient source system.</div>
+<div class="meta">clinical-dwh &middot; generated 2026-10-26 &middot; live-API scope only</div>
+</div></header>
+<div class="wrap">
+<nav class="toc"><strong>Jump to:</strong> <a href="#flow">Data Flow</a><a href="#services">Services</a><a href="#sources">Sources</a><a href="#status">Known Issues</a></nav>
+
+<h2 class="section gold" id="flow">Data Flow</h2>
+<p>Five live Thai government APIs, no flat files, no manual exports. Raw API responses land in a
+versioned, content-hashed S3-compatible store before Bronze shreds them into tables.</p>
+<div class="flow">
+  <div class="box">API<br><small>NSO / BMA / DIW / DDS / HDC</small></div>
+  <div class="arrow">&rarr;</div>
+  <div class="box">Landing Zone<br><small>SeaweedFS, versioned, content-hashed</small></div>
+  <div class="arrow">&rarr;</div>
+  <div class="box bronze">Bronze<br><small>1:1 shred, no transformation</small></div>
+  <div class="arrow">&rarr;</div>
+  <div class="box silver">Silver<br><small>typed, cleansed, BE&rarr;CE years</small></div>
+  <div class="arrow">&rarr;</div>
+  <div class="box gold">Gold<br><small>dims, facts, aggregates, composite index</small></div>
+  <div class="arrow">&rarr;</div>
+  <div class="box">Metabase<br><small>SELECT-only on gold.*</small></div>
+</div>
+<div class="callout">Each of the 5 live-API sources is wrapped in <code>run_pipeline.run_live_source()</code>,
+which logs a failure and continues rather than aborting the whole run — confirmed necessary in practice (DDS's
+outage would otherwise block Silver/Gold on every pipeline run until DDS's own team fixes their server).</div>
+
+<h2 class="section gold" id="services">Services (docker-compose.yml)</h2>
+<div class="svcgrid">
+  <div class="svc"><h4>warehouse-db</h4><p>MySQL 8.0, hosts bronze/silver/gold schemas. <code>dwh_elt</code> (full DML/DDL)
+  and <code>metabase_ro</code> (SELECT on gold.* only) accounts.</p></div>
+  <div class="svc"><h4>elt-runner</h4><p>One-shot Python batch job, runs the full Bronze&rarr;Silver&rarr;Gold pipeline,
+  then exits. Re-run any time with <code>docker compose run --rm elt-runner</code>.</p></div>
+  <div class="svc"><h4>landing-zone</h4><p>SeaweedFS, S3-compatible. MinIO was the original choice but its free
+  container distribution was discontinued across every registry as of this build (confirmed by direct testing).</p></div>
+  <div class="svc"><h4>metabase</h4><p>BI tool, connects only to warehouse-db.gold via the read-only account.
+  Dashboards are built manually via the Metabase UI, not by the pipeline.</p></div>
+</div>
+
+<h2 class="section gold" id="sources">The 5 Sources</h2>
+<table class="cols">
+<tr><th>Source</th><th>What it is</th><th>Ingest script</th><th>Status</th></tr>
+<tr><td>NSO</td><td>Household income by province, socio-economic class</td><td><code>ingest_api_nso.py</code></td><td><span class="badge ok">verified</span></td></tr>
+<tr><td>BMA</td><td>Bangkok community registry, one CSV resource per fiscal year</td><td><code>ingest_api_bma.py</code></td><td><span class="badge ok">verified</span></td></tr>
+<tr><td>DIW</td><td>Factory registry, 3 provinces, amphoe-by-amphoe crawl</td><td><code>ingest_api_diw.py</code></td><td><span class="badge ok">verified</span></td></tr>
+<tr><td>DDS</td><td>Notifiable-disease ranking, CSRF-token-gated PDF report</td><td><code>ingest_api_dds.py</code></td><td><span class="badge pending">blocked — DDS backend down</span></td></tr>
+<tr><td>HDC</td><td>Health-status reports, 4 subcatalogs, ~1,100 throttled requests for a full crawl</td><td><code>ingest_api_hdc.py</code></td><td><span class="badge ok">verified</span></td></tr>
+</table>
+
+<h2 class="section gold" id="status">Known Issues</h2>
+<div class="callout warn"><strong>DDS backend down since 2026-10-25.</strong> Every request returns a server-side
+error: <code>"could not find driver (Connection: pgsql...)"</code> — a missing/misconfigured PostgreSQL PHP driver
+on DDS's own server, confirmed by repeated direct testing, unrelated to this code. Re-run
+<code>ingest_api_dds.run()</code> once it recovers; the landing zone exists specifically because DDS "keeps no
+archive: a finished year it stops serving cannot be fetched again."</div>
+<div class="callout"><strong>PII exclusion, DIW.</strong> The source sheet carries <code>operator_name</code>
+(factory owner's personal name) and <code>phone</code>. Both are read off the sheet (to keep column positions
+aligned) and dropped before any row is built, logged, or inserted — they never reach Bronze, Silver, Gold, or
+any output.</div>
+<div class="callout"><strong>fact_hdc_observation.geo_key is often NULL.</strong> Only ~40% of pivoted HDC
+records resolve to a geography — this is correct: reports using the <code>disease_ranking</code> or
+<code>unsupported</code> layout (see Silver EAV notes) don't carry a resolvable area name per record.</div>
+</div>
+<footer class="page">clinical-dwh documentation &middot; see docs/03_external_reference_sources.md for full provenance notes</footer>
+</body></html>

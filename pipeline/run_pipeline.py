@@ -1,5 +1,7 @@
 """
-Orchestrates the full Bronze -> Silver -> Gold run.
+Orchestrates the Bronze -> Silver pipeline for the 5 live-API sources
+(NSO income, BMA community, DIW factory registry, DDS disease ranking,
+HDC health-status).
 
 Usage (normally invoked via docker compose, not directly):
     docker compose run --rm elt-runner
@@ -8,9 +10,15 @@ Each layer is a full refresh: every *.sql script in sql/<layer>/ drops and
 recreates its own tables, so reruns are idempotent — there is no manual
 cleanup step between runs.
 
-Rebuilt from scratch on 2026-10-13 against the reorganized
-share_unprocessed_20261010 folder. Sources are added one at a time; see
-docs/03_external_reference_sources.md for progress.
+Pruned on 2026-10-26 to cover only the live-API sources -- the file-based
+Bronze/Silver sources and the old Gold layer (DOPA, HDC manual exports,
+Lat Krabang, KMCH, factory_list, DDS health region, the old file-based
+NSO, HDC region6_13, other_health, and every Gold dimension/fact table,
+all of which depended on those sources) were removed on explicit
+instruction. A new Gold layer was then built from scratch for the 5
+live-API sources, designed bottom-up from the KPI tree + dashboard design
+in Excel\\KPI_Tree_and_Dashboard_Design.xlsx. See
+docs/03_external_reference_sources.md for verification status.
 """
 
 import os
@@ -28,83 +36,16 @@ DWH_PORT = int(os.environ["DWH_DB_PORT"])
 DWH_USER = os.environ["DWH_DB_USER"]
 DWH_PASSWORD = os.environ["DWH_DB_PASSWORD"]
 
-# Execution order matters: each layer's DDL must run before its DML, and
-# Gold DDL/DML order matters because facts carry FKs into dimensions.
-# Filled in source-by-source as each one is built.
 BRONZE_SCRIPTS: list[str] = [
-    "bronze/01_create_bronze_dopa_tables.sql",
-    "bronze/02_create_bronze_hdc_manual_tables.sql",
-    "bronze/03_create_bronze_lat_krabang_tables.sql",
-    "bronze/04_create_bronze_kmch_tables.sql",
-    "bronze/05_create_bronze_factory_list_tables.sql",
-    "bronze/06_create_bronze_dds_health_region_tables.sql",
-    "bronze/07_create_bronze_nso_tables.sql",
-    "bronze/08_create_bronze_hdc_region6_13_tables.sql",
-    "bronze/09_create_bronze_other_health_tables.sql",
+    "bronze/10_create_bronze_api_sources.sql",
 ]
 SILVER_SCRIPTS: list[str] = [
-    "silver/01_create_silver_dopa_tables.sql",
-    "silver/02_transform_silver_dopa.sql",
-    "silver/03_create_silver_nso_tables.sql",
-    "silver/04_create_silver_other_health_population_tables.sql",
-    "silver/05_create_silver_hdc_manual_tables.sql",
-    "silver/06_create_silver_hdc_region6_13_tables.sql",
-    "silver/07_transform_silver_hdc_region6_13.sql",
-    "silver/08_create_silver_dds_health_region_tables.sql",
-    "silver/09_transform_silver_dds_health_region.sql",
-    "silver/10_create_silver_other_health_disease_tables.sql",
-    "silver/11_transform_silver_other_health_disease.sql",
-    "silver/12_create_silver_lat_krabang_tables.sql",
-    "silver/13_transform_silver_lat_krabang.sql",
-    "silver/14_create_silver_kmch_factory_tables.sql",
-    "silver/15_transform_silver_kmch_factory.sql",
-    "silver/16_create_silver_other_health_local_tables.sql",
-    "silver/17_transform_silver_other_health_local.sql",
+    "silver/18_create_silver_api_sources.sql",
 ]
-# Split in two: scripts before dim_geography is populated (pure DDL, or
-# dimensions sourced straight from Silver) vs. scripts after (fact tables
-# that JOIN against dim_geography, which transform_gold_dim_geography.py
-# populates in Python between the two lists -- it's created as an empty
-# table by 02_create_dim_geography.sql but only gets rows via that script).
-GOLD_SCRIPTS_PRE_GEO: list[str] = [
-    "gold/01_create_dim_date.sql",
-    "gold/02_create_dim_geography.sql",
-    "gold/03_create_dim_age_sex_and_component.sql",
-]
-GOLD_SCRIPTS_POST_GEO: list[str] = [
-    "gold/04_create_fact_population_by_area.sql",
-    "gold/05_transform_fact_population_by_area.sql",
-    "gold/06_create_fact_population_age_sex.sql",
-    "gold/07_transform_fact_population_age_sex.sql",
-    "gold/08_create_obt_population_by_geography.sql",
-    "gold/09_transform_obt_population_by_geography.sql",
-    "gold/10_create_agg_population_summary_yearly.sql",
-    "gold/11_transform_agg_population_summary_yearly.sql",
-    "gold/12_create_feat_geography_month.sql",
-    "gold/13_transform_feat_geography_month.sql",
-    "gold/14_create_dim_disease.sql",
-    "gold/15_create_fact_disease_event.sql",
-    "gold/16_transform_fact_disease_event.sql",
-    "gold/17_create_fact_disease_incidence_hdc.sql",
-    "gold/18_transform_fact_disease_incidence_hdc.sql",
-    "gold/19_create_obt_disease_surveillance.sql",
-    "gold/20_transform_obt_disease_surveillance.sql",
-    "gold/21_create_agg_disease_kpi_monthly.sql",
-    "gold/22_transform_agg_disease_kpi_monthly.sql",
-    "gold/23_alter_feat_geography_month_add_disease.sql",
-    "gold/24_transform_feat_geography_month_disease.sql",
-    "gold/25_create_dim_factory.sql",
-    "gold/26_create_dim_place.sql",
-    "gold/27_create_fact_factory_registration.sql",
-    "gold/28_transform_fact_factory_registration.sql",
-    "gold/29_create_fact_catchment_place.sql",
-    "gold/30_transform_fact_catchment_place.sql",
-    "gold/31_create_obt_economic_by_geography.sql",
-    "gold/32_transform_obt_economic_by_geography.sql",
-    "gold/33_create_agg_economic_summary_yearly.sql",
-    "gold/34_transform_agg_economic_summary_yearly.sql",
-    "gold/35_create_feat_factory.sql",
-    "gold/36_transform_feat_factory.sql",
+GOLD_SCRIPTS: list[str] = [
+    "gold/01_create_gold_dimensions.sql",
+    "gold/02_create_gold_facts.sql",
+    "gold/03_create_gold_agg_obt.sql",
 ]
 
 
@@ -121,6 +62,21 @@ def wait_for_mysql(host: str, port: int, user: str, password: str, label: str, t
             last_error = exc
             time.sleep(2)
     raise RuntimeError(f"{label} did not become ready within {timeout_s}s: {last_error}")
+
+
+def run_live_source(label: str, ingest_fn, load_fn) -> None:
+    """Live government APIs (NSO/BMA/DIW/DDS/HDC) can go down transiently and
+    independently of this pipeline (confirmed live: DDS's own backend was
+    returning a server-side DB-driver error on 2026-10-25, unrelated to any
+    request this pipeline sends). One external outage must not abort the
+    whole run for every other source, so a failure here is logged and the
+    run moves on."""
+    print(f"\n=== BRONZE: ingest + load live {label} ===")
+    try:
+        ingest_fn()
+        load_fn()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[pipeline] WARNING: live {label} failed, skipping ({type(exc).__name__}: {exc})", file=sys.stderr)
 
 
 def run_sql_file(relative_path: str) -> None:
@@ -159,82 +115,28 @@ def print_row_counts(schema: str, tables: list[str]) -> None:
 
 def print_bronze_summary() -> None:
     print_row_counts("bronze", [
-        "dopa_population_by_area_month", "dopa_source_file_registry", "dopa_metadata_file_registry",
-    ])
-    print_row_counts("bronze", [
-        "schema_registry", "report_catalog",
-        "ncd_reports", "morbidity_mortality_causes",
-        "occupational_environmental_diseases", "air_pollution_diseases",
-    ])
-    print_row_counts("bronze", [
-        "edu_vocational_college", "edu_university", "edu_school", "health_hospital",
-        "religious_site", "business_establishment", "safety_risk_point", "community",
-        "population_total", "population_death",
-    ])
-    print_row_counts("bronze", ["kmch_catchment_places"])
-    print_row_counts("bronze", ["factory_list"])
-    print_row_counts("bronze", ["dds_health_region_disease_report"])
-    print_row_counts("bronze", [
-        "ingestion_log", "pop_reg_national", "pop_reg_province",
-        "pop_reg_structure_metadata", "pop_sur_survey",
-    ])
-    print_row_counts("bronze", [
-        "inc_monthly_asthma", "inc_monthly_copd", "inc_monthly_coronary", "inc_monthly_dm", "inc_monthly_ht",
-        "inc_annual_ihd",
-        "pop_age_ca_breast", "pop_age_ca_cervix", "pop_age_ca_lung", "pop_age_copd", "pop_age_coronary",
-        "pop_age_dm", "pop_age_emphysema", "pop_age_ht", "pop_age_stroke",
-        "death_age_copd", "death_age_coronary", "death_age_dm", "death_age_ht",
-    ])
-    print_row_counts("bronze", [
-        "sick_298group_long", "sick_298group_wide",
-        "surveillance_top_diseases_2566", "surveillance_top_diseases_2567",
-        "compare_cases_by_disease", "compare_cases_by_subdistrict",
-        "ncd_mortality_multisheet", "cause_of_death_top10_with_rate", "cause_of_death_top10_no_rate",
-        "population_by_age_subdistrict_bkk", "population_by_tambon_national",
-        "elderly_dependency_by_district", "health_kpi_export",
-        "community_count_by_district_bkk", "foreign_labor_permit_by_area_bkk",
-        "_ingestion_manifest",
+        "api_nso_income", "api_bma_community", "api_diw_factory",
+        "api_dds_disease_ranking", "api_hdc_report_catalog", "api_hdc_observations",
     ])
 
 
 def print_silver_summary() -> None:
-    print_row_counts("silver", ["population_by_area_month"])
     print_row_counts("silver", [
-        "pop_indicator_lookup", "population_reference_age_sex", "labor_force_survey",
-    ])
-    print_row_counts("silver", [
-        "population_by_age_subdistrict_bkk", "population_by_tambon_national",
-        "elderly_dependency_by_district",
-    ])
-    print_row_counts("silver", ["hdc_indicator_observations"])
-    print_row_counts("silver", [
-        "hdc_incidence_monthly", "hdc_incidence_annual", "hdc_population_by_age", "hdc_death_by_age",
-    ])
-    print_row_counts("silver", ["dds_health_region_disease_report"])
-    print_row_counts("silver", [
-        "sick_298group_long", "sick_298group_wide", "surveillance_top_diseases",
-        "compare_cases_by_disease", "compare_cases_by_subdistrict", "ncd_mortality_by_disease",
-        "cause_of_death_top10_with_rate", "cause_of_death_top10_no_rate",
-    ])
-    print_row_counts("silver", [
-        "edu_vocational_college", "edu_university", "edu_school", "health_hospital",
-        "religious_site", "business_establishment", "safety_risk_point",
-        "lat_krabang_population_by_subdistrict", "lat_krabang_deaths_by_subdistrict",
-    ])
-    print_row_counts("silver", ["kmch_catchment_places", "factory_list"])
-    print_row_counts("silver", [
-        "health_kpi_export", "community_count_by_district_bkk", "foreign_labor_permit_by_area_bkk",
+        "api_nso_income", "api_bma_community", "api_diw_factory",
+        "api_dds_disease_ranking", "api_hdc_observations",
     ])
 
 
 def print_gold_summary() -> None:
-    print_row_counts("gold", ["dim_date", "dim_geography", "dim_age_sex", "dim_population_component"])
-    print_row_counts("gold", ["fact_population_by_area", "fact_population_age_sex"])
-    print_row_counts("gold", ["obt_population_by_geography", "agg_population_summary_yearly", "feat_geography_month"])
-    print_row_counts("gold", ["dim_disease", "fact_disease_event", "fact_disease_incidence_hdc"])
-    print_row_counts("gold", ["obt_disease_surveillance", "agg_disease_kpi_monthly"])
-    print_row_counts("gold", ["dim_factory", "dim_place", "fact_factory_registration", "fact_catchment_place"])
-    print_row_counts("gold", ["obt_economic_by_geography", "agg_economic_summary_yearly", "feat_factory"])
+    print_row_counts("gold", ["dim_date", "dim_geography", "dim_industry", "dim_hdc_report", "dim_disease"])
+    print_row_counts("gold", [
+        "fact_income", "fact_factory", "fact_community_population",
+        "fact_disease_ranking", "fact_hdc_observation",
+    ])
+    print_row_counts("gold", [
+        "agg_economic_by_province_year", "agg_population_by_district_year",
+        "agg_health_kpi_by_province_year", "obt_regional_composite_index",
+    ])
 
 
 def main() -> None:
@@ -244,77 +146,56 @@ def main() -> None:
     for script in BRONZE_SCRIPTS:
         run_sql_file(script)
 
-    print("\n=== BRONZE: load DOPA population-by-area files ===")
-    import extract_load_dopa
-    extract_load_dopa.run()
+    import ingest_api_nso, extract_load_api_nso
+    run_live_source("NSO income API", ingest_api_nso.run, extract_load_api_nso.run)
 
-    print("\n=== BRONZE: load HDC manual exports ===")
-    import extract_load_hdc_manual
-    extract_load_hdc_manual.run()
+    import ingest_api_bma, extract_load_api_bma
+    run_live_source("BMA community API", ingest_api_bma.run, extract_load_api_bma.run)
 
-    print("\n=== BRONZE: load Lat Krabang district office tables ===")
-    import extract_load_lat_krabang
-    extract_load_lat_krabang.run()
+    import ingest_api_diw, extract_load_api_diw
+    run_live_source("DIW factory registry API", ingest_api_diw.run, extract_load_api_diw.run)
 
-    print("\n=== BRONZE: load KMCH catchment places ===")
-    import extract_load_kmch
-    extract_load_kmch.run()
+    import ingest_api_dds, extract_load_api_dds
+    run_live_source("DDS disease ranking API", ingest_api_dds.run, extract_load_api_dds.run)
 
-    print("\n=== BRONZE: load Factory list ===")
-    import extract_load_factory_list
-    extract_load_factory_list.run()
+    import ingest_api_hdc, extract_load_api_hdc
+    run_live_source("HDC health-status API", ingest_api_hdc.run, extract_load_api_hdc.run)
 
-    print("\n=== BRONZE: load DDS health region weekly reports ===")
-    import extract_load_dds_health_region
-    extract_load_dds_health_region.run()
+    print("\n=== SILVER: create tables + transform ===")
+    for script in SILVER_SCRIPTS:
+        run_sql_file(script)
 
-    print("\n=== BRONZE: load NSO population data ===")
-    import extract_load_nso
-    extract_load_nso.run()
+    print("\n=== SILVER: cleanse + conform live-API sources ===")
+    import transform_silver_api_nso
+    transform_silver_api_nso.run()
+    import transform_silver_api_bma
+    transform_silver_api_bma.run()
+    import transform_silver_api_diw
+    transform_silver_api_diw.run()
+    import transform_silver_api_dds
+    transform_silver_api_dds.run()
+    import transform_silver_api_hdc
+    transform_silver_api_hdc.run()
 
-    print("\n=== BRONZE: load HDC region6_13 by-age API exports ===")
-    import extract_load_hdc_region6_13
-    extract_load_hdc_region6_13.run()
+    print("\n=== GOLD: create tables ===")
+    for script in GOLD_SCRIPTS:
+        run_sql_file(script)
 
-    print("\n=== BRONZE: load other health & population tables ===")
-    import extract_load_other_health
-    extract_load_other_health.run()
+    print("\n=== GOLD: build dimensions ===")
+    import transform_gold_dimensions
+    transform_gold_dimensions.run()
 
-    if SILVER_SCRIPTS:
-        print("\n=== SILVER: create tables + transform ===")
-        for script in SILVER_SCRIPTS:
-            run_sql_file(script)
+    print("\n=== GOLD: build facts ===")
+    import transform_gold_facts
+    transform_gold_facts.run()
 
-        print("\n=== SILVER: transform NSO population & labor force data ===")
-        import transform_silver_nso
-        transform_silver_nso.run()
-
-        print("\n=== SILVER: transform other_health population tables ===")
-        import transform_silver_other_health_population
-        transform_silver_other_health_population.run()
-
-        print("\n=== SILVER: unpivot HDC_manual_exports ===")
-        import transform_silver_hdc_manual
-        transform_silver_hdc_manual.run()
-
-    if GOLD_SCRIPTS_PRE_GEO:
-        print("\n=== GOLD: create dimensions ===")
-        for script in GOLD_SCRIPTS_PRE_GEO:
-            run_sql_file(script)
-
-        print("\n=== GOLD: build dim_geography ===")
-        import transform_gold_dim_geography
-        transform_gold_dim_geography.run()
-
-        print("\n=== GOLD: create + load facts ===")
-        for script in GOLD_SCRIPTS_POST_GEO:
-            run_sql_file(script)
+    print("\n=== GOLD: build aggregates + composite index ===")
+    import transform_gold_agg
+    transform_gold_agg.run()
 
     print_bronze_summary()
-    if SILVER_SCRIPTS:
-        print_silver_summary()
-    if GOLD_SCRIPTS_PRE_GEO:
-        print_gold_summary()
+    print_silver_summary()
+    print_gold_summary()
     print("\n[pipeline] completed successfully")
 
 

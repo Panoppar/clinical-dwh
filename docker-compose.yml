@@ -3,15 +3,23 @@ name: clinical-dwh
 # ============================================================================
 # Regional Health & Population Data Warehouse — local orchestration
 #
-#   warehouse-db  : MySQL DWH hosting the bronze / silver / gold schemas,
-#                   built entirely from externally-sourced reference data
-#                   (DOPA/NSO population, HDC/DDS health surveillance,
-#                   Lat Krabang/KMCH local-area data) -- no clinic/patient
-#                   source system feeds this warehouse.
-#   elt-runner    : one-shot Python job that executes the Bronze -> Silver ->
-#                   Gold pipeline, then exits (run again any time with
-#                   `docker compose run --rm elt-runner`)
-#   metabase      : BI tool, connects ONLY to warehouse-db.gold
+#   warehouse-db  : MySQL DWH hosting the bronze / silver / gold schemas.
+#                   Only bronze/silver are populated -- built entirely from
+#                   5 live Thai government APIs (NSO, BMA, DIW, DDS, HDC),
+#                   no flat files, no clinic/patient source system.
+#   elt-runner    : one-shot Python job that executes the Bronze -> Silver
+#                   pipeline for all 5 sources, then exits (run again any
+#                   time with `docker compose run --rm elt-runner`)
+#   metabase      : BI tool, connects ONLY to warehouse-db.gold (currently
+#                   empty -- no Gold layer has been built for these sources yet)
+#   landing-zone  : S3-compatible landing zone (SeaweedFS -- MinIO's free
+#                   container distribution was discontinued across every
+#                   registry as of this build, confirmed by direct testing)
+#                   for the live-API Bronze sources. Raw API responses land
+#                   here, versioned and content-hashed (see
+#                   pipeline/landing_store.py), before Bronze shreds them
+#                   into tables -- elt-runner itself never writes these
+#                   bytes to its own container filesystem.
 # ============================================================================
 
 services:
@@ -49,16 +57,47 @@ services:
       DWH_DB_PORT: ${DWH_DB_PORT}
       DWH_DB_USER: root
       DWH_DB_PASSWORD: ${DWH_DB_ROOT_PASSWORD}
+      LANDING_ENDPOINT: ${LANDING_ENDPOINT}
+      LANDING_ACCESS_KEY: ${LANDING_ACCESS_KEY}
+      LANDING_SECRET_KEY: ${LANDING_SECRET_KEY}
+      LANDING_BUCKET: ${LANDING_BUCKET}
     volumes:
       - ./sql:/app/sql:ro
-      - ./external-sources:/app/external-sources:ro
     depends_on:
       warehouse-db:
+        condition: service_healthy
+      landing-zone:
         condition: service_healthy
     networks:
       - cdw-net
     # No `restart` on purpose: this is a run-to-completion batch job, not a daemon.
     profiles: ["etl"]
+
+  landing-zone:
+    image: chrislusf/seaweedfs:latest
+    container_name: cdw-landing-zone
+    restart: unless-stopped
+    # all-in-one mode (master+volume+filer+S3 gateway) for a single-node
+    # dev landing zone; -s3.config provides the access/secret key pair
+    # elt-runner authenticates with (see seaweedfs_s3_config.json)
+    command: server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3_config.json
+    volumes:
+      - landing_zone_data:/data
+      - ./seaweedfs_s3_config.json:/etc/seaweedfs/s3_config.json:ro
+    ports:
+      - "${LANDING_S3_HOST_PORT}:8333"
+    healthcheck:
+      # 403 Forbidden (unauthenticated GET /) is the correct, healthy
+      # response from the S3 gateway -- wget's -q/-O would treat that as
+      # a failure, so this just confirms the HTTP round-trip completes at
+      # all. 127.0.0.1 (not localhost) avoids an IPv6-first resolution
+      # hang observed in this image.
+      test: ["CMD", "curl", "-s", "-o", "/dev/null", "http://127.0.0.1:8333"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks:
+      - cdw-net
 
   metabase:
     image: metabase/metabase:v0.50.19
@@ -84,3 +123,4 @@ networks:
 volumes:
   warehouse_db_data:
   metabase_data:
+  landing_zone_data:

@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>clinical-dwh — Runbook</title>
+<style>
+:root {
+  --bronze: #CD7F32; --silver: #9DA3A8; --gold: #D4AF37;
+  --ink: #1a1a2e; --muted: #5a6472; --bg: #fafbfc; --card: #ffffff;
+  --border: #e2e5ea; --accent: #2E75B6; --warn: #C00000; --ok: #2e7d32;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', -apple-system, Roboto, sans-serif; background: var(--bg); color: var(--ink);
+       margin: 0; padding: 0; line-height: 1.55; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 32px 24px 80px; }
+header.page { background: linear-gradient(135deg, #1a1a2e 0%, #2E75B6 100%); color: #fff; padding: 40px 24px; }
+header.page h1 { margin: 0 0 8px; font-size: 1.9rem; }
+header.page .sub { opacity: .88; font-size: .98rem; max-width: 900px; }
+header.page .meta { margin-top: 14px; font-size: .85rem; opacity: .75; }
+nav.toc { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; margin: 24px 0; }
+nav.toc a { color: var(--accent); text-decoration: none; margin-right: 18px; font-size: .92rem; }
+nav.toc a:hover { text-decoration: underline; }
+h2.section { font-size: 1.4rem; margin-top: 44px; padding-bottom: 8px; border-bottom: 3px solid var(--accent); }
+h2.section.bronze { border-color: var(--bronze); } h2.section.silver { border-color: var(--silver); }
+h2.section.gold { border-color: var(--gold); }
+h3.table-title { font-size: 1.08rem; margin: 28px 0 4px; display: flex; align-items: center; gap: 10px; }
+.badge { display: inline-block; font-size: .72rem; font-weight: 600; padding: 2px 9px; border-radius: 999px; color: #fff; }
+.badge.bronze { background: var(--bronze); } .badge.silver { background: #6b7280; } .badge.gold { background: #b8860b; }
+.badge.pending { background: var(--warn); } .badge.ok { background: var(--ok); }
+.rowcount { font-size: .85rem; color: var(--muted); font-weight: 500; }
+p.table-desc { color: var(--muted); margin: 4px 0 10px; font-size: .93rem; max-width: 900px; }
+table.cols { width: 100%; border-collapse: collapse; margin-bottom: 8px; background: var(--card);
+             border: 1px solid var(--border); border-radius: 8px; overflow: hidden; font-size: .87rem; }
+table.cols th { background: #f1f3f6; text-align: left; padding: 9px 12px; font-weight: 600; color: var(--muted);
+                 text-transform: uppercase; font-size: .72rem; letter-spacing: .03em; }
+table.cols td { padding: 8px 12px; border-top: 1px solid var(--border); vertical-align: top; }
+table.cols tr:nth-child(even) td { background: #fbfbfd; }
+code { background: #eef0f3; padding: 1px 6px; border-radius: 4px; font-size: .85em; color: #333; }
+.callout { border-left: 4px solid var(--accent); background: #eef5fc; padding: 12px 16px; margin: 16px 0; border-radius: 0 8px 8px 0; font-size: .92rem; }
+.callout.warn { border-color: var(--warn); background: #fdecec; }
+.callout.ok { border-color: var(--ok); background: #eaf6ea; }
+.flow { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 22px 0; }
+.flow .box { background: var(--card); border: 2px solid var(--border); border-radius: 10px; padding: 14px 18px; font-size: .88rem; min-width: 150px; }
+.flow .box.bronze { border-color: var(--bronze); } .flow .box.silver { border-color: #9DA3A8; } .flow .box.gold { border-color: var(--gold); }
+.flow .arrow { font-size: 1.4rem; color: var(--muted); }
+.svcgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 20px 0; }
+.svc { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+.svc h4 { margin: 0 0 6px; font-size: .96rem; }
+.svc p { margin: 0; font-size: .85rem; color: var(--muted); }
+.pyramid { display: flex; flex-direction: column; align-items: center; gap: 4px; margin: 24px 0; }
+.pyramid .level { color: #fff; padding: 10px 18px; border-radius: 6px; font-size: .85rem; text-align: center; }
+.kpi-table td.kpi-id { font-family: Consolas, monospace; font-weight: 600; white-space: nowrap; }
+footer.page { text-align: center; color: var(--muted); font-size: .8rem; padding: 30px 0; }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 800px) { .two-col { grid-template-columns: 1fr; } }
+ol.steps { counter-reset: step; list-style: none; padding: 0; margin: 18px 0; }
+ol.steps > li { counter-increment: step; position: relative; padding: 4px 0 18px 42px; border-left: 2px solid var(--border); margin-left: 15px; }
+ol.steps > li:last-child { border-left: 2px solid transparent; padding-bottom: 0; }
+ol.steps > li::before { content: counter(step); position: absolute; left: -15px; top: 2px; width: 28px; height: 28px;
+  background: var(--accent); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: .82rem; font-weight: 700; }
+ol.steps h4 { margin: 0 0 6px; font-size: 1rem; }
+pre { background: #1a1a2e; color: #e8eaf0; padding: 14px 16px; border-radius: 8px; overflow-x: auto; font-size: .84rem; line-height: 1.5; }
+pre code { background: none; color: inherit; padding: 0; }
+table.checklist td:first-child { width: 28px; text-align: center; }
+</style></head><body>
+<header class="page"><div class="wrap" style="padding:0">
+<h1>Deployment Runbook</h1><div class="sub">How to deploy this warehouse from zero: first-time setup, verification, Metabase bootstrap, day-2 operations, troubleshooting, and full reset.</div>
+<div class="meta">clinical-dwh &middot; generated 2026-10-26 &middot; live-API scope only</div>
+</div></header>
+<div class="wrap">
+<nav class="toc"><strong>Jump to:</strong> <a href="#prereq">Prerequisites</a><a href="#firstrun">First Deploy</a>
+<a href="#verify">Verify</a><a href="#metabase">Metabase Bootstrap</a><a href="#day2">Day-2 Ops</a>
+<a href="#troubleshooting">Troubleshooting</a><a href="#reset">Reset</a></nav>
+
+<h2 class="section gold" id="prereq">Prerequisites</h2>
+<ul>
+<li>Docker Desktop with Compose v2</li>
+<li>Outbound internet access to 5 government API hosts (NSO, BMA, DIW, DDS, HDC) and GitHub (if re-fetching
+anything) — this pipeline has no offline mode</li>
+<li>Python 3 with <code>openpyxl</code> only if regenerating <code>Excel\KPI_Tree_and_Dashboard_Design.xlsx</code>
+or these docs</li>
+</ul>
+
+<h2 class="section gold" id="firstrun">First-Time Deploy</h2>
+<ol class="steps">
+<li><h4>Clone and configure environment</h4>
+<pre><code>Copy-Item .env.example .env
+Copy-Item seaweedfs_s3_config.json.example seaweedfs_s3_config.json
+# Edit BOTH files: change every ChangeMe_* password.
+# The access/secret key pair must match between the two files --
+# .env is read by elt-runner; seaweedfs_s3_config.json is read
+# directly by the SeaweedFS binary, not env-templated.</code></pre></li>
+
+<li><h4>Bring up infrastructure</h4>
+<pre><code>docker compose up -d warehouse-db landing-zone metabase
+docker compose ps   # wait for warehouse-db and landing-zone to show "healthy"</code></pre>
+<p class="table-desc">warehouse-db's healthcheck is <code>mysqladmin ping</code>; landing-zone's accepts any HTTP
+response (even 403) as healthy -- confirms the SeaweedFS S3 gateway is reachable, not that credentials are
+correct yet.</p></li>
+
+<li><h4>Build and run the pipeline</h4>
+<pre><code>docker compose build elt-runner
+docker compose run --rm elt-runner</code></pre>
+<p class="table-desc">One-shot batch job. Ingests all 5 sources (DIW's amphoe crawl takes ~70s; HDC's full
+report crawl takes ~15-20 min at its 0.6s throttle -- this is the long pole of a first deploy), shreds to
+Bronze, cleanses to Silver, builds Gold. A source that's down (see DDS, below) logs a warning and the run
+continues -- it will NOT abort the whole deploy.</p></li>
+</ol>
+
+<h2 class="section gold" id="verify">Verify the Deploy</h2>
+<p>The pipeline prints a row-count summary on success. Expected figures (2026-10-26 baseline; BMA/HDC will grow
+as those sources publish new fiscal years/reports):</p>
+<table class="cols checklist">
+<tr><th></th><th>Table</th><th>Expected rows</th></tr>
+<tr><td>&check;</td><td><code>bronze.api_nso_income</code></td><td>15,400</td></tr>
+<tr><td>&check;</td><td><code>bronze.api_bma_community</code></td><td>6,027</td></tr>
+<tr><td>&check;</td><td><code>bronze.api_diw_factory</code></td><td>13,683</td></tr>
+<tr><td>&#9888;</td><td><code>bronze.api_dds_disease_ranking</code></td><td>0 -- expected while DDS's backend is down (see Troubleshooting)</td></tr>
+<tr><td>&check;</td><td><code>bronze.api_hdc_observations</code></td><td>163,219</td></tr>
+<tr><td>&check;</td><td><code>gold.dim_geography</code></td><td>451 (77 provinces + 67 districts + 307 subdistricts)</td></tr>
+<tr><td>&check;</td><td><code>gold.obt_regional_composite_index</code></td><td>154 (province x year combinations)</td></tr>
+</table>
+<p>Spot-check manually if any number looks off:</p>
+<pre><code>docker compose exec warehouse-db mysql --default-character-set=utf8mb4 -u root -p `
+  -e "SELECT COUNT(*) FROM gold.fact_hdc_observation;"</code></pre>
+<div class="callout warn">Always pass <code>--default-character-set=utf8mb4</code> explicitly on any manual
+mysql client invocation. Confirmed by direct testing: the MySQL server image's own bundled client defaults to
+latin1 and silently corrupts Thai string comparisons with no error raised.</div>
+
+<h2 class="section gold" id="metabase">Metabase Bootstrap</h2>
+<p>A brand-new Metabase container has no admin account and no database connections -- first boot shows a setup
+wizard. Two ways to complete it:</p>
+<div class="two-col">
+<div><h4>Option A -- UI wizard</h4><p class="table-desc">Open http://localhost:3000, follow the prompts: create
+the admin account, then add a database connection (MySQL, host <code>warehouse-db</code>, port 3306, database
+<code>gold</code>, user <code>metabase_ro</code>, password = <code>DWH_METABASE_RO_PASSWORD</code> from
+<code>.env</code>).</p></div>
+<div><h4>Option B -- API (scriptable, used for this deploy)</h4><p class="table-desc">Get the setup token, then
+POST the admin user. <strong>The embedded <code>database</code> object in <code>/api/setup</code> was unreliable
+on v0.50.19 in practice</strong> -- it silently succeeded without creating a connection. Add the database as a
+separate explicit call instead:</p></div>
+</div>
+<pre><code>$token = (Invoke-RestMethod http://localhost:3000/api/session/properties).'setup-token'
+Invoke-RestMethod -Method Post http://localhost:3000/api/setup -ContentType 'application/json' -Body (@{
+  token = $token
+  user = @{ first_name='Admin'; last_name='User'; email='you@example.com'; password='...'; site_name='clinical-dwh' }
+  prefs = @{ site_name='clinical-dwh'; site_locale='en'; allow_tracking=$false }
+} | ConvertTo-Json -Depth 5)
+
+# Then log in and add the real database connection explicitly:
+$session = (Invoke-RestMethod -Method Post http://localhost:3000/api/session -ContentType 'application/json' `
+  -Body (@{ username='you@example.com'; password='...' } | ConvertTo-Json)).id
+Invoke-RestMethod -Method Post http://localhost:3000/api/database -Headers @{'X-Metabase-Session'=$session} `
+  -ContentType 'application/json' -Body (@{
+    engine = 'mysql'; name = 'gold'
+    details = @{ host='warehouse-db'; port=3306; dbname='gold'; user='metabase_ro'; password='...'; ssl=$false }
+  } | ConvertTo-Json -Depth 5)</code></pre>
+<p class="table-desc">Verify sync completed: <code>GET /api/database/{id}?include=tables</code>, check every
+table shows <code>"initial_sync_status":"complete"</code>.</p>
+<div class="callout">A default "Sample Database" (Metabase's own H2 demo dataset, <code>id=1</code> on a fresh
+instance) is added automatically during setup. Remove it for a clean workspace:
+<code>DELETE /api/database/1</code> with the admin session header.</div>
+
+<h2 class="section gold" id="day2">Day-2 Operations</h2>
+<ul>
+<li><strong>Re-run the pipeline</strong> any time: <code>docker compose run --rm elt-runner</code>. Idempotent --
+the landing zone skips re-storing identical bytes, each layer's DDL drops/recreates its own tables.</li>
+<li><strong>Re-run just one source</strong> (faster than a full run while iterating):
+<pre><code>docker compose run --rm elt-runner python -c "import ingest_api_nso, extract_load_api_nso; ingest_api_nso.run(); extract_load_api_nso.run()"</code></pre></li>
+<li><strong>Regenerate these docs</strong> after any schema change -- dump the schema, then run the generator:
+<pre><code>docker compose exec warehouse-db mysql --default-character-set=utf8mb4 -u root -p `
+  -N -e "SELECT table_schema,table_name,column_name,column_type,is_nullable,column_comment,ordinal_position FROM information_schema.columns WHERE table_schema IN ('bronze','silver','gold') ORDER BY 1,2,7;" `
+  > "$env:TEMP\schema_dump.tsv"
+python docs\build_html_docs.py</code></pre></li>
+<li><strong>Rebuild the elt-runner image</strong> after any Python/requirements change:
+<code>docker compose build elt-runner</code></li>
+</ul>
+
+<h2 class="section gold" id="troubleshooting">Troubleshooting</h2>
+<div class="callout warn"><strong>DDS returns 500 on every request.</strong> Check for
+<code>"could not find driver (Connection: pgsql...)"</code> in the response body -- that's DDS's own backend
+missing its PostgreSQL PHP driver, not fixable from this side. Nothing to do but wait and re-run
+<code>ingest_api_dds.run()</code> periodically.</div>
+<div class="callout warn"><strong>NSO requests return an HTTP 418 block page.</strong> The WAF in front of
+NSO's API blocks the default requests/curl User-Agent. Confirm <code>ingest_api_nso.py</code> still sends
+<code>User-Agent: Mozilla/5.0 kmch-phase3-nso/1.0</code> -- if NSO changes their WAF rules, the fix is a
+different UA string, not a code redesign.</div>
+<div class="callout"><strong>landing-zone container is "unhealthy".</strong> Its healthcheck accepts any HTTP
+response as healthy (even 403) -- a real failure means the container can't be reached at all. Check
+<code>docker compose logs landing-zone</code>; a common cause is <code>seaweedfs_s3_config.json</code> missing
+(copy it from the <code>.example</code> if you skipped that step).</div>
+<div class="callout"><strong>A full pipeline run seems to hang for ~15-20 minutes.</strong> That's the HDC
+crawl (119 reports x up to 5 years x 2 zones, throttled 0.6s between requests) -- not a hang. Watch the log for
+<code>[ingest_api_hdc] (N/119)...</code> lines advancing.</div>
+
+<h2 class="section gold" id="reset">Full Reset</h2>
+<pre><code>docker compose down -v   # removes containers AND volumes -- landed objects, warehouse data, Metabase state all gone
+docker compose up -d warehouse-db landing-zone metabase
+docker compose run --rm elt-runner
+# then redo the Metabase Bootstrap section above -- a fresh volume means a fresh setup wizard</code></pre>
+<div class="callout warn">This deletes everything: every landed API response in SeaweedFS, every Bronze/Silver/Gold
+row, and the entire Metabase instance (admin account, saved questions, dashboards). Only run this when you
+genuinely want to start over.</div>
+</div>
+<footer class="page">clinical-dwh documentation &middot; see docs/03_external_reference_sources.md for full provenance notes</footer>
+</body></html>
