@@ -41,6 +41,17 @@ def _build_dim_date(silver_conn, gold_conn):
     print(f"[gold_dim] dim_date: {len(years)} years ({min(years)}-{max(years)})")
 
 
+def _admin_types(province: str) -> tuple[str, str]:
+    """-> (district_type, subdistrict_type). Bangkok uses เขต/แขวง; every
+    other province uses อำเภอ/ตำบล. Not readable off any source's raw text
+    (BMA/DIW/NSO all carry bare names, confirmed by direct inspection) --
+    derived from this well-known, fixed fact about Thai public
+    administration, not inferred from the data."""
+    if province == "กรุงเทพมหานคร":
+        return "เขต", "แขวง"
+    return "อำเภอ", "ตำบล"
+
+
 def _build_dim_geography(silver_conn, gold_conn):
     province_key = {}   # province_name -> geo_key
     district_key = {}   # (province_name, district_name) -> geo_key
@@ -60,10 +71,11 @@ def _build_dim_geography(silver_conn, gold_conn):
         if k in district_key:
             return district_key[k]
         parent = province_key[province]
+        district_type, _ = _admin_types(province)
         cur.execute(
-            "INSERT INTO dim_geography (admin_level, province_name, district_name, parent_geo_key, source_systems) "
-            "VALUES ('district', %s, %s, %s, %s)",
-            (province, district, parent, sources),
+            "INSERT INTO dim_geography (admin_level, province_name, district_name, district_type, "
+            "parent_geo_key, source_systems) VALUES ('district', %s, %s, %s, %s, %s)",
+            (province, district, district_type, parent, sources),
         )
         district_key[k] = cur.lastrowid
         return district_key[k]
@@ -115,10 +127,12 @@ def _build_dim_geography(silver_conn, gold_conn):
                 continue
             is_also_diw = ("กรุงเทพมหานคร", district, subdistrict) in diw_subdistricts
             sources = "BMA,DIW" if is_also_diw else "BMA"
+            district_type, subdistrict_type = _admin_types("กรุงเทพมหานคร")
             cur.execute(
-                "INSERT INTO dim_geography (admin_level, province_name, district_name, subdistrict_name, "
-                "parent_geo_key, source_systems) VALUES ('subdistrict', %s, %s, %s, %s, %s)",
-                ("กรุงเทพมหานคร", district, subdistrict, parent, sources),
+                "INSERT INTO dim_geography (admin_level, province_name, district_name, district_type, "
+                "subdistrict_name, subdistrict_type, parent_geo_key, source_systems) "
+                "VALUES ('subdistrict', %s, %s, %s, %s, %s, %s, %s)",
+                ("กรุงเทพมหานคร", district, district_type, subdistrict, subdistrict_type, parent, sources),
             )
             subdistrict_seen.add(k)
         for province, amphoe, tambon in sorted(diw_subdistricts):
@@ -128,10 +142,12 @@ def _build_dim_geography(silver_conn, gold_conn):
             parent = district_key.get((province, amphoe))
             if parent is None:
                 continue
+            district_type, subdistrict_type = _admin_types(province)
             cur.execute(
-                "INSERT INTO dim_geography (admin_level, province_name, district_name, subdistrict_name, "
-                "parent_geo_key, source_systems) VALUES ('subdistrict', %s, %s, %s, %s, 'DIW')",
-                (province, amphoe, tambon, parent),
+                "INSERT INTO dim_geography (admin_level, province_name, district_name, district_type, "
+                "subdistrict_name, subdistrict_type, parent_geo_key, source_systems) "
+                "VALUES ('subdistrict', %s, %s, %s, %s, %s, %s, 'DIW')",
+                (province, amphoe, district_type, tambon, subdistrict_type, parent),
             )
             subdistrict_seen.add(k)
 

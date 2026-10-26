@@ -30,12 +30,24 @@ CREATE TABLE `dim_date` (
     `year_be`    SMALLINT NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- district_type/subdistrict_type: Bangkok's admin units are named เขต
+-- (district-level) / แขวง (subdistrict-level) instead of the อำเภอ/ตำบล
+-- used by every other province -- a real naming difference in Thai public
+-- administration, not a data-quality issue. BMA/DIW/NSO's own raw text
+-- never carries this prefix (confirmed: values are bare names like
+-- "คลองเตย", not "เขตคลองเตย"), so it can't be read off the source data --
+-- derived deterministically instead: province_name = 'กรุงเทพมหานคร' means
+-- เขต/แขวง, every other province means อำเภอ/ตำบล. NULL at admin levels
+-- where the corresponding _name column is also NULL (province level has
+-- no district_type; district level has no subdistrict_type).
 CREATE TABLE `dim_geography` (
     `geo_key`           INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `admin_level`       VARCHAR(12)  NOT NULL COMMENT 'province | district | subdistrict',
     `province_name`     VARCHAR(150) NOT NULL,
     `district_name`     VARCHAR(150) COMMENT 'NULL at province level',
+    `district_type`     VARCHAR(10)  COMMENT 'เขต (Bangkok) | อำเภอ (elsewhere); NULL at province level',
     `subdistrict_name`  VARCHAR(150) COMMENT 'NULL above subdistrict level',
+    `subdistrict_type`  VARCHAR(10)  COMMENT 'แขวง (Bangkok) | ตำบล (elsewhere); NULL above subdistrict level',
     `parent_geo_key`    INT UNSIGNED NULL,
     `source_systems`    VARCHAR(100) NOT NULL COMMENT 'which of NSO/BMA/DIW contributed this row, comma-separated',
     KEY `ix_dg_level` (`admin_level`),
