@@ -183,7 +183,7 @@ table.checklist td:first-child { width: 28px; text-align: center; }
 <tr><td><code>raw_active</code></td><td>varchar(10)</td><td>yes</td><td></td></tr>
 <tr><td><code>raw_byear_list</code></td><td>varchar(255)</td><td>yes</td><td>Comma-separated list of fiscal years this report currently exposes</td></tr>
 </table>
-<h3 class="table-title">bronze.api_hdc_observations <span class="rowcount">163,219 rows</span></h3>
+<h3 class="table-title">bronze.api_hdc_observations <span class="rowcount">163,233 rows</span></h3>
 <p class="table-desc">Raw EAV landing of HDC's health-status data API. One row per (report, year, zone, record, field) -- live reports vary column layout per report, so every field is kept generically rather than inventing a schema per report.</p>
 <table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
 <tr><td><code>bronze_id</code></td><td>bigint</td><td>no</td><td>Surrogate primary key.</td></tr>
@@ -270,7 +270,7 @@ table.checklist td:first-child { width: 28px; text-align: center; }
 <tr><td><code>death_count</code></td><td>decimal(14,2)</td><td>yes</td><td></td></tr>
 <tr><td><code>case_fatality_pct</code></td><td>decimal(8,4)</td><td>yes</td><td></td></tr>
 </table>
-<h3 class="table-title">silver.api_hdc_observations <span class="rowcount">163,219 rows</span></h3>
+<h3 class="table-title">silver.api_hdc_observations <span class="rowcount">163,233 rows</span></h3>
 <p class="table-desc">Cleansed HDC EAV: report_name resolved via join against the Bronze catalog, year BE->CE. field_value stays TEXT -- ~116 reports mix counts/rates/percentages under the same generic column, so per-report typing is a Gold concern.</p>
 <table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
 <tr><td><code>silver_id</code></td><td>bigint</td><td>no</td><td></td></tr>
@@ -298,7 +298,9 @@ table.checklist td:first-child { width: 28px; text-align: center; }
 <tr><td><code>admin_level</code></td><td>varchar(12)</td><td>no</td><td>province | district | subdistrict</td></tr>
 <tr><td><code>province_name</code></td><td>varchar(150)</td><td>no</td><td></td></tr>
 <tr><td><code>district_name</code></td><td>varchar(150)</td><td>yes</td><td>NULL at province level</td></tr>
+<tr><td><code>district_type</code></td><td>varchar(10)</td><td>yes</td><td>เขต (Bangkok) | อำเภอ (elsewhere); NULL at province level</td></tr>
 <tr><td><code>subdistrict_name</code></td><td>varchar(150)</td><td>yes</td><td>NULL above subdistrict level</td></tr>
+<tr><td><code>subdistrict_type</code></td><td>varchar(10)</td><td>yes</td><td>แขวง (Bangkok) | ตำบล (elsewhere); NULL above subdistrict level</td></tr>
 <tr><td><code>parent_geo_key</code></td><td>int unsigned</td><td>yes</td><td></td></tr>
 <tr><td><code>source_systems</code></td><td>varchar(100)</td><td>no</td><td>which of NSO/BMA/DIW contributed this row, comma-separated</td></tr>
 </table>
@@ -375,7 +377,7 @@ table.checklist td:first-child { width: 28px; text-align: center; }
 <tr><td><code>death_count</code></td><td>decimal(14,2)</td><td>yes</td><td></td></tr>
 <tr><td><code>case_fatality_pct</code></td><td>decimal(8,4)</td><td>yes</td><td></td></tr>
 </table>
-<h3 class="table-title">gold.fact_hdc_observation <span class="rowcount">8,485 rows</span></h3>
+<h3 class="table-title">gold.fact_hdc_observation <span class="rowcount">8,486 rows</span></h3>
 <p class="table-desc">HDC fact, PIVOTED from Silver's EAV rows into named columns (target/result/f3_rate/male/female/total) for the headline fields the KPI tree needs. geo_key is resolved from the record's own area name when the report's layout carries one (province_keyed layout); NULL is a real 'not area-resolvable from this report', not a loading gap.</p>
 <table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
 <tr><td><code>fact_id</code></td><td>bigint</td><td>no</td><td></td></tr>
