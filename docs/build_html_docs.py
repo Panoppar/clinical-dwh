@@ -140,6 +140,21 @@ TABLE_DESC = {
     ("gold", "agg_population_by_district_year"): "Feeds Dashboard 3 (Population & Community). One row per district x fiscal year.",
     ("gold", "agg_health_kpi_by_province_year"): "Feeds Dashboard 4 (Public Health Surveillance). One row per province x year.",
     ("gold", "obt_regional_composite_index"): "Feeds Dashboard 1 (Executive Overview). Level-3 strategic KPIs (K-STR-01/02/03), min-max normalized 0-100, equal-weighted across components.",
+
+    # kmch-ml input-parity extension (2026-10-26)
+    ("bronze", "geo_boundary_subdistrict"): "Raw 1:1 landing of Thailand's canonical ADM3 (subdistrict) reference CSV -- DevelopedbyWill/thailand-canonical-admin-names (GitHub, public, CC BY 4.0), fetched independently of kmch-ml's own repo. Feeds gold.dim_area.",
+    ("bronze", "geo_boundary_district"): "Raw 1:1 landing of the matching ADM2 (district) reference CSV, same source.",
+    ("bronze", "geo_boundary_polygon"): "Raw 1:1 landing of the ADM3 polygon GeoJSON (full geometry per feature, kept as source-of-truth text -- not used directly by Gold, which only needs the centroid/distance/tier derived from it).",
+    ("bronze", "geo_hospital_facility"): "Raw Overpass (OSM) API landing of hospital/healthcare facilities near KMCH. 0 rows -- Overpass's public instance (overpass-api.de, incl. its lz4 mirror) returned HTTP 406 on every request tested 2026-10-26, confirmed blocked from both the container and the host machine directly, unrelated to this code.",
+    ("bronze", "geo_travel_matrix"): "Raw OSRM table-API landing: every gold.dim_area unit x every gold.dim_facility destination (always includes the fixed KMCH coordinate regardless of OSM's block above). Public demo server, confirmed working.",
+    ("silver", "geo_boundary_subdistrict"): "Cleansed subdistrict reference: coordinates cast to DECIMAL, text trimmed.",
+    ("silver", "geo_boundary_district"): "Cleansed district reference: coordinates/area cast to DECIMAL, text trimmed.",
+    ("silver", "geo_hospital_facility"): "Cleansed OSM facilities. 0 rows -- same Overpass block as Bronze.",
+    ("silver", "geo_travel_matrix"): "Cleansed OSRM travel matrix: duration/distance cast to DECIMAL.",
+    ("gold", "dim_area"): "Catchment-area dimension (kmch-ml input-parity gap 1). 317 units across the 3 catchment provinces, grain is normally a subdistrict; Bangkok's 13 post-2019 khwaeng splits (no centroid in this snapshot) fall back to their 7 parent districts (flagged via is_district_level_fallback, same handling kmch-ml uses). catchment_tier/dist_to_kmch_km computed via Haversine distance from the fixed KMCH coordinate -- verified: the hospital's own district (ลาดกระบัง) correctly lands as the closest, core-tier unit.",
+    ("gold", "dim_facility"): "Hospital/facility dimension (kmch-ml input-parity gap 3). Always contains at least the fixed KMCH coordinate (destination_id='KMCH') regardless of whether OSM facility discovery has landed anything.",
+    ("gold", "fact_hdc_weekly_observation"): "4 PM2.5-linked weekly disease reports (kmch-ml input-parity gap 2) -- confirmed already discovered by the existing HDC subcatalog crawl (no ingest change needed), just never pivoted into Gold before. Normalized (not wide-pivoted: each week has 4+ metric variants, e.g. m/y/z/zy, undocumented meaning per HDC) into (report, year, zone, disease group, week 1-53 or NULL for annual totals, variant, value).",
+    ("gold", "fact_hospital_access"): "Raw unit-to-facility travel matrix (kmch-ml input-parity gap 3) -- duration/distance only, explicitly excludes kmch-ml's derived accessibility scores (Huff share, E2SFCA), which are analytical modeling out of scope here. Verified: road distance consistently exceeds straight-line distance as expected; closest units by straight-line also show shortest drive times.",
 }
 
 GENERIC_LINEAGE_DESC = {
@@ -169,12 +184,18 @@ def build_data_dictionary():
 
     table_order = {
         "bronze": ["api_nso_income", "api_bma_community", "api_diw_factory",
-                   "api_dds_disease_ranking", "api_hdc_report_catalog", "api_hdc_observations"],
+                   "api_dds_disease_ranking", "api_hdc_report_catalog", "api_hdc_observations",
+                   "geo_boundary_subdistrict", "geo_boundary_district", "geo_boundary_polygon",
+                   "geo_hospital_facility", "geo_travel_matrix"],
         "silver": ["api_nso_income", "api_bma_community", "api_diw_factory",
-                   "api_dds_disease_ranking", "api_hdc_observations"],
+                   "api_dds_disease_ranking", "api_hdc_observations",
+                   "geo_boundary_subdistrict", "geo_boundary_district",
+                   "geo_hospital_facility", "geo_travel_matrix"],
         "gold": ["dim_date", "dim_geography", "dim_industry", "dim_hdc_report", "dim_disease",
+                 "dim_area", "dim_facility",
                  "fact_income", "fact_factory", "fact_community_population",
-                 "fact_disease_ranking", "fact_hdc_observation",
+                 "fact_disease_ranking", "fact_hdc_observation", "fact_hdc_weekly_observation",
+                 "fact_hospital_access",
                  "agg_economic_by_province_year", "agg_population_by_district_year",
                  "agg_health_kpi_by_province_year", "obt_regional_composite_index"],
     }
@@ -188,8 +209,9 @@ def build_data_dictionary():
             cols = tables.get((schema, table), [])
             n = counts.get((schema, table))
             desc = TABLE_DESC.get((schema, table), "")
-            pending = n == 0 and "DDS" in desc
-            badge = '<span class="badge pending">0 rows — DDS pending</span>' if pending else f'<span class="rowcount">{n:,} rows</span>' if n is not None else ""
+            pending_reason = "DDS pending" if "DDS" in desc else "Overpass blocked" if "Overpass" in desc else None
+            pending = n == 0 and pending_reason is not None
+            badge = f'<span class="badge pending">0 rows — {pending_reason}</span>' if pending else f'<span class="rowcount">{n:,} rows</span>' if n is not None else ""
             body.append(f'<h3 class="table-title">{schema}.{table} {badge}</h3>')
             body.append(f'<p class="table-desc">{desc}</p>')
             body.append('<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>')
@@ -215,10 +237,10 @@ def build_architecture():
 <nav class="toc"><strong>Jump to:</strong> <a href="#flow">Data Flow</a><a href="#services">Services</a><a href="#sources">Sources</a><a href="#status">Known Issues</a></nav>
 
 <h2 class="section gold" id="flow">Data Flow</h2>
-<p>Five live Thai government APIs, no flat files, no manual exports. Raw API responses land in a
-versioned, content-hashed S3-compatible store before Bronze shreds them into tables.</p>
+<p>Live Thai government APIs + 2 public geo/routing services, no flat files, no manual exports. Raw API
+responses land in a versioned, content-hashed S3-compatible store before Bronze shreds them into tables.</p>
 <div class="flow">
-  <div class="box">API<br><small>NSO / BMA / DIW / DDS / HDC</small></div>
+  <div class="box">API<br><small>NSO / BMA / DIW / DDS / HDC / geo-boundary / OSM / OSRM</small></div>
   <div class="arrow">&rarr;</div>
   <div class="box">Landing Zone<br><small>SeaweedFS, versioned, content-hashed</small></div>
   <div class="arrow">&rarr;</div>
@@ -230,9 +252,12 @@ versioned, content-hashed S3-compatible store before Bronze shreds them into tab
   <div class="arrow">&rarr;</div>
   <div class="box">Metabase<br><small>SELECT-only on gold.*</small></div>
 </div>
-<div class="callout">Each of the 5 live-API sources is wrapped in <code>run_pipeline.run_live_source()</code>,
-which logs a failure and continues rather than aborting the whole run — confirmed necessary in practice (DDS's
-outage would otherwise block Silver/Gold on every pipeline run until DDS's own team fixes their server).</div>
+<div class="callout">Each live source is wrapped in <code>run_pipeline.run_live_source()</code>, which logs a
+failure and continues rather than aborting the whole run — confirmed necessary in practice (DDS's and Overpass's
+outages would otherwise block Silver/Gold on every pipeline run). One exception to the usual
+Bronze-all&rarr;Silver-all&rarr;Gold-all ordering: OSRM's ingest needs <code>gold.dim_area</code>'s unit
+centroids as its source points, so it runs between Gold dimensions and Gold facts, not alongside the other live
+sources.</div>
 
 <h2 class="section gold" id="services">Services (docker-compose.yml)</h2>
 <div class="svcgrid">
@@ -246,14 +271,17 @@ outage would otherwise block Silver/Gold on every pipeline run until DDS's own t
   Dashboards are built manually via the Metabase UI, not by the pipeline.</p></div>
 </div>
 
-<h2 class="section gold" id="sources">The 5 Sources</h2>
+<h2 class="section gold" id="sources">The Sources</h2>
 <table class="cols">
 <tr><th>Source</th><th>What it is</th><th>Ingest script</th><th>Status</th></tr>
 <tr><td>NSO</td><td>Household income by province, socio-economic class</td><td><code>ingest_api_nso.py</code></td><td><span class="badge ok">verified</span></td></tr>
 <tr><td>BMA</td><td>Bangkok community registry, one CSV resource per fiscal year</td><td><code>ingest_api_bma.py</code></td><td><span class="badge ok">verified</span></td></tr>
 <tr><td>DIW</td><td>Factory registry, 3 provinces, amphoe-by-amphoe crawl</td><td><code>ingest_api_diw.py</code></td><td><span class="badge ok">verified</span></td></tr>
 <tr><td>DDS</td><td>Notifiable-disease ranking, CSRF-token-gated PDF report</td><td><code>ingest_api_dds.py</code></td><td><span class="badge pending">blocked — DDS backend down</span></td></tr>
-<tr><td>HDC</td><td>Health-status reports, 4 subcatalogs, ~1,100 throttled requests for a full crawl</td><td><code>ingest_api_hdc.py</code></td><td><span class="badge ok">verified</span></td></tr>
+<tr><td>HDC</td><td>Health-status reports, 4 subcatalogs (incl. 4 PM2.5-linked weekly reports), ~1,100 throttled requests for a full crawl</td><td><code>ingest_api_hdc.py</code></td><td><span class="badge ok">verified</span></td></tr>
+<tr><td>Geo boundary</td><td>Thailand admin-boundary reference (dim_area input): subdistrict/district CSV + ADM3 polygon GeoJSON</td><td><code>ingest_api_geo_boundary.py</code></td><td><span class="badge ok">verified</span></td></tr>
+<tr><td>OSM</td><td>Hospital/healthcare facilities near KMCH (Overpass API)</td><td><code>ingest_api_osm.py</code></td><td><span class="badge pending">blocked — Overpass 406</span></td></tr>
+<tr><td>OSRM</td><td>Unit-to-facility travel-time/distance matrix (public demo server)</td><td><code>ingest_api_osrm.py</code></td><td><span class="badge ok">verified</span></td></tr>
 </table>
 
 <h2 class="section gold" id="status">Known Issues</h2>
@@ -262,6 +290,11 @@ error: <code>"could not find driver (Connection: pgsql...)"</code> — a missing
 on DDS's own server, confirmed by repeated direct testing, unrelated to this code. Re-run
 <code>ingest_api_dds.run()</code> once it recovers; the landing zone exists specifically because DDS "keeps no
 archive: a finished year it stops serving cannot be fetched again."</div>
+<div class="callout warn"><strong>Overpass (OSM) blocked since 2026-10-26.</strong> The public
+<code>overpass-api.de</code> instance (incl. its <code>lz4</code> mirror) returns HTTP 406 on every request,
+confirmed from both the <code>elt-runner</code> container and the host machine directly — a block on this
+network origin, unrelated to this code. <code>ingest_api_osrm.py</code> does not depend on this succeeding: it
+always computes the travel matrix from every <code>dim_area</code> unit to the fixed KMCH coordinate.</div>
 <div class="callout"><strong>PII exclusion, DIW.</strong> The source sheet carries <code>operator_name</code>
 (factory owner's personal name) and <code>phone</code>. Both are read off the sheet (to keep column positions
 aligned) and dropped before any row is built, logged, or inserted — they never reach Bronze, Silver, Gold, or
@@ -320,27 +353,33 @@ indices at the apex.</p>
 </table>
 
 <h2 class="section gold" id="gold">Gold Table Reference</h2>
-<p>Full column-level detail is in <a href="02_data_dictionary.html">02_data_dictionary.html</a>. Quick map:</p>
+<p>Full column-level detail is in <a href="02_data_dictionary.html">02_data_dictionary.html</a>. Quick map
+(14 original dashboard-feeding tables, plus 5 added 2026-10-26 toward kmch-ml input parity):</p>
 <div class="two-col">
 <div><h4>Dimensions</h4><ul>
 <li><code>dim_date</code>, <code>dim_geography</code>, <code>dim_industry</code>, <code>dim_hdc_report</code>, <code>dim_disease</code></li>
+<li><code>dim_area</code> (catchment units, kmch-ml parity), <code>dim_facility</code> (hospitals, kmch-ml parity)</li>
 </ul><h4>Facts</h4><ul>
 <li><code>fact_income</code>, <code>fact_factory</code>, <code>fact_community_population</code></li>
 <li><code>fact_disease_ranking</code> (0 rows, DDS pending)</li>
 <li><code>fact_hdc_observation</code> (pivoted from Silver's EAV shape)</li>
+<li><code>fact_hdc_weekly_observation</code> (PM2.5 weekly, kmch-ml parity)</li>
+<li><code>fact_hospital_access</code> (OSM/OSRM travel matrix, kmch-ml parity)</li>
 </ul></div>
 <div><h4>Aggregates / Composite</h4><ul>
 <li><code>agg_economic_by_province_year</code></li>
 <li><code>agg_population_by_district_year</code></li>
 <li><code>agg_health_kpi_by_province_year</code></li>
 <li><code>obt_regional_composite_index</code> (K-STR-01/02/03)</li>
-</ul></div>
+</ul><p style="font-size:.85rem;color:var(--muted)">The 5 kmch-ml-parity additions aren't wired into any of
+these aggregates or the 4 dashboards -- additive ingestion only, not a KPI/dashboard change.</p></div>
 </div>
 
 <h2 class="section gold" id="metabase">Metabase Connection</h2>
 <div class="callout ok">Fresh Metabase instance (old one dropped entirely 2026-10-26). Connects to
 <code>warehouse-db.gold</code> via the read-only <code>metabase_ro</code> account — same least-privilege
-enforcement as before, bronze/silver are not reachable from Metabase. All 14 Gold tables confirmed synced.
+enforcement as before, bronze/silver are not reachable from Metabase. The original 14 Gold tables are confirmed
+synced and unchanged by the 2026-10-26 kmch-ml-parity extension (verified against information_schema before/after).
 Dashboards are being built manually via the Metabase UI, not generated by the pipeline.</div>
 """
     html = _page(

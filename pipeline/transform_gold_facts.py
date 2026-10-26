@@ -1,4 +1,4 @@
-"""Builds gold's 5 fact tables from silver.api_* (+ bronze.api_hdc_report_catalog
+"""Builds gold's fact tables from silver.api_* (+ bronze.api_hdc_report_catalog
 for dim_hdc_report lookups). Must run after transform_gold_dimensions.py.
 
 fact_hdc_observation pivots Silver's EAV rows (one row per report x year x
@@ -6,9 +6,16 @@ zone x record x field) into one row per (report, year, zone, record),
 with target/result/F3/male/female/total promoted to named columns -- the
 headline fields the KPI tree's Health pillar needs (K-HLT-03/04). Every
 other field_name silver carries stays in Silver only, not duplicated here.
+
+fact_hdc_weekly_observation (kmch-ml input-parity gap 2) does the same
+EAV-source pattern for the 4 PM2.5-linked weekly reports, but normalizes
+(not wide-pivots) the w_NN_variant field-name pattern instead -- see
+sql/gold/05_create_gold_hdc_weekly_facts.sql for why a literal 200+-column
+pivot isn't the right shape here.
 """
 
 import os
+import re
 from collections import defaultdict
 
 import pymysql
@@ -22,6 +29,17 @@ DDS_PROVINCE_NAMES = {"10": "กรุงเทพมหานคร", "11": "�
 # dropped from this pivot (still available in silver.api_hdc_observations).
 HDC_HEADLINE_FIELDS = {"target": "target", "result": "result", "F3": "f3_rate",
                         "male": "male", "female": "female", "total": "total"}
+
+# The 4 PM2.5-linked weekly disease reports (kmch-ml input-parity gap 2) --
+# already discovered by the existing HDC subcatalog crawl under
+# "การป่วยด้วยโรคจากมลพิษทางอากาศ" (air pollution disease), confirmed live
+# 2026-10-26, not a separate report family needing ingest changes.
+HDC_WEEKLY_REPORT_CODES = (
+    "NL9idjvwQKjv6R6Maiw9", "cxG0gstCJkfG1X1c71y4o",
+    "58t8PvddP1nCaDdSTuakd", "5968980caf87d4518aa9f0263a9299c9",
+)
+_WEEKLY_FIELD_RE = re.compile(r"^w_(\d+)_(\w+)$")
+_ALL_FIELD_RE = re.compile(r"^all_(\w+)$")
 
 
 def _connect(database):
@@ -207,6 +225,90 @@ def _build_fact_hdc_observation(silver_conn, gold_conn, geo_lookup):
           f"(pivoted from {sum(1 for _ in records)} distinct report/year/zone/record groups)")
 
 
+def _build_fact_hdc_weekly(silver_conn, gold_conn):
+    """kmch-ml input-parity gap 2. These 4 reports' field names (group_name/
+    ordering/w_NN_variant/all_variant) never match fact_hdc_observation's
+    headline-field set, so they're implicitly excluded from that pivot
+    already (confirmed: 0 rows there for these report codes) -- this is a
+    separate fact table, not a change to the existing one."""
+    with gold_conn.cursor() as cur:
+        cur.execute("SELECT report_key, report_code FROM dim_hdc_report")
+        report_lookup = {code: key for key, code in cur.fetchall()}
+
+    placeholders = ",".join(["%s"] * len(HDC_WEEKLY_REPORT_CODES))
+    meta: dict[tuple, dict] = defaultdict(dict)  # (report_code,year,zone,record_index) -> {group_name, ordering}
+    metrics: list[tuple] = []  # (report_code, year, zone, record_index, week_number, variant, value)
+    with silver_conn.cursor(pymysql.cursors.SSCursor) as scur:
+        scur.execute(
+            f"SELECT report_code, year_ce, zone, record_index, field_name, field_value "
+            f"FROM api_hdc_observations WHERE report_code IN ({placeholders})",
+            HDC_WEEKLY_REPORT_CODES,
+        )
+        for report_code, year_ce, zone, record_index, field_name, field_value in scur:
+            key = (report_code, year_ce, zone, record_index)
+            if field_name == "group_name":
+                meta[key]["group_name"] = field_value
+            elif field_name == "ordering":
+                meta[key]["ordering"] = _to_int(field_value)
+            elif (m := _WEEKLY_FIELD_RE.match(field_name)):
+                metrics.append((report_code, year_ce, zone, record_index, int(m.group(1)), m.group(2), field_value))
+            elif (m := _ALL_FIELD_RE.match(field_name)):
+                metrics.append((report_code, year_ce, zone, record_index, None, m.group(1), field_value))
+
+    insert_sql = (
+        "INSERT INTO fact_hdc_weekly_observation (report_key, date_key, zone, record_index, "
+        "disease_group_name, ordering, week_number, metric_variant, metric_value) "
+        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+    )
+    rows = []
+    for report_code, year_ce, zone, record_index, week_number, variant, value in metrics:
+        report_key = report_lookup.get(report_code)
+        if report_key is None or year_ce is None:
+            continue
+        m = meta.get((report_code, year_ce, zone, record_index), {})
+        rows.append((
+            report_key, year_ce, zone, record_index,
+            m.get("group_name"), m.get("ordering"), week_number, variant, _to_decimal(value),
+        ))
+
+    with gold_conn.cursor() as cur:
+        BATCH = 5000
+        for i in range(0, len(rows), BATCH):
+            cur.executemany(insert_sql, rows[i:i + BATCH])
+    gold_conn.commit()
+    print(f"[gold_fact] fact_hdc_weekly_observation: {len(rows)} rows")
+
+
+def _build_fact_hospital_access(silver_conn, gold_conn):
+    """kmch-ml input-parity gap 3. Raw travel matrix only -- no Huff
+    share/E2SFCA scoring, see sql/gold/06."""
+    with gold_conn.cursor() as cur:
+        cur.execute("SELECT area_key, unit_code FROM dim_area")
+        area_lookup = {code: key for key, code in cur.fetchall()}
+        cur.execute("SELECT facility_key, destination_id FROM dim_facility")
+        facility_lookup = {dest_id: key for key, dest_id in cur.fetchall()}
+
+    with silver_conn.cursor() as scur:
+        scur.execute("SELECT source_unit_code, destination_id, duration_s, distance_m FROM geo_travel_matrix")
+        rows_in = scur.fetchall()
+
+    rows = []
+    for unit_code, dest_id, duration, distance in rows_in:
+        area_key = area_lookup.get(unit_code)
+        facility_key = facility_lookup.get(dest_id)
+        if area_key is None or facility_key is None:
+            continue
+        rows.append((area_key, facility_key, duration, distance))
+
+    with gold_conn.cursor() as cur:
+        cur.executemany(
+            "INSERT INTO fact_hospital_access (area_key, facility_key, duration_s, distance_m) "
+            "VALUES (%s,%s,%s,%s)", rows,
+        )
+    gold_conn.commit()
+    print(f"[gold_fact] fact_hospital_access: {len(rows)} rows")
+
+
 def run() -> None:
     silver_conn = _connect("silver")
     gold_conn = _connect("gold")
@@ -217,6 +319,8 @@ def run() -> None:
     _build_fact_community_population(silver_conn, gold_conn, geo_lookup)
     _build_fact_disease_ranking(silver_conn, gold_conn, geo_lookup)
     _build_fact_hdc_observation(silver_conn, gold_conn, geo_lookup)
+    _build_fact_hdc_weekly(silver_conn, gold_conn)
+    _build_fact_hospital_access(silver_conn, gold_conn)
 
     silver_conn.close()
     gold_conn.close()

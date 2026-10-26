@@ -52,12 +52,14 @@ successfully with DDS skipped and every other source loaded through Silver.
 raw text columns to real types and normalizing BE→CE fiscal years (NSO/
 BMA/HDC source their years in Buddhist era; DDS's own year scheme is
 already Christian era, confirmed by its token-probing logic). Row counts
-match Bronze exactly (15,400 / 6,027 / 13,683 / 0 / 163,219) — no rows
-silently dropped by a failed cast. `api_hdc_observations` keeps
-`field_value` as text rather than casting per report (~116 reports mix
-counts/rates/percentages under the same generic column) — per-report
-typing and dimension resolution are Gold concerns, and no Gold layer has
-been built yet for these sources.
+match Bronze exactly — no rows silently dropped by a failed cast.
+`api_hdc_observations` keeps `field_value` as text rather than casting per
+report (~116 reports mix counts/rates/percentages under the same generic
+column) — per-report typing and dimension resolution are Gold concerns.
+Gold (dimensions/facts/aggregates/composite index, plus the kmch-ml
+input-parity additions: `dim_area`, `dim_facility`, weekly HDC,
+hospital-access) is live — see `docs/04_gold_layer_and_kpi_guide.html`
+for the full table list.
 
 ## Scope reduction (2026-10-26)
 
@@ -75,3 +77,51 @@ that no longer exist), and the docs that described all of it
 live `warehouse-db` (97 explicit `DROP TABLE` statements for bronze/silver,
 plus the entire `gold` schema dropped and recreated empty). `README.md`
 was rewritten to describe the reduced, API-only scope.
+
+## kmch-ml input-parity extension (2026-10-26)
+
+Additive ingestion only — no existing Gold table/column renamed, dropped,
+or redefined (verified against `information_schema` before and after).
+Closes 3 of the 4 gaps between this warehouse's input surface and what
+kmch-ml's analysis pipeline needs; DOPA population (gap 4 in the planning
+doc) stays a documented gap, not built, pending separate project-owner
+sign-off, per explicit instruction.
+
+- **`dim_area`** (catchment-area dimension): built from
+  `DevelopedbyWill/thailand-canonical-admin-names` (GitHub, public, CC BY
+  4.0 — fetched independently, not read from kmch-ml's own repo).
+  317 units across the 3 catchment provinces (Bangkok/Samut Prakan/
+  Chachoengsao) — close to but not identical to kmch-ml's own documented
+  312, most likely snapshot-date drift in the same shared public dataset
+  since kmch-ml last built it (internally consistent: both pulls agree on
+  323 current Bangkok/Samut Prakan/Chachoengsao tambon). Bangkok's 13
+  post-2019 khwaeng splits (no centroid in this snapshot) fall back to
+  their 7 parent districts, same handling kmch-ml uses, flagged via
+  `is_district_level_fallback` rather than hidden. Distance/catchment-tier
+  verified against the hospital's own district (ลาดกระบัง) correctly
+  landing as the closest, "core"-tier unit.
+- **`fact_hdc_weekly_observation`** (4 PM2.5-linked weekly disease
+  reports): turned out to need *zero* Bronze/Silver changes — these 4
+  report codes were already being discovered by the existing HDC
+  subcatalog crawl (confirmed live, under "การป่วยด้วยโรคจากมลพิษทางอากาศ"),
+  just never pivoted into Gold. ~65k rows normalized into
+  (report, year, zone, disease group, week 1-53 or NULL for annual
+  totals, metric variant, value) — not a flat `w_01..w_53` wide pivot
+  (each week actually carries 4+ variant suffixes, confirmed live: `_m`/
+  `_y`/`_z`/`_zy` plus additional `_f`-suffixed and `s` variants, meaning
+  undocumented by HDC — carried as-is, not guessed).
+- **`dim_facility` / `fact_hospital_access`** (OSM + OSRM travel matrix):
+  Overpass's public instance (`overpass-api.de`, including its `lz4`
+  mirror) returned HTTP 406 on every request tested 2026-10-26, confirmed
+  from both the `elt-runner` container and the host machine directly —
+  a block on this network origin, unrelated to this code, same class of
+  issue as DDS's backend outage. `ingest_api_osm.py` is code-complete and
+  wrapped in `run_pipeline.run_live_source()`, worth retrying once
+  reachable. `ingest_api_osrm.py` (public demo server,
+  `router.project-osrm.org`, confirmed working) does not hard-depend on
+  OSM succeeding — it always computes the travel matrix from every
+  `dim_area` unit to the fixed KMCH coordinate, verified: all 317 units
+  resolved, road distance consistently exceeds straight-line distance as
+  expected, closest units by straight-line also show the shortest drive
+  times. Raw matrix only — no Huff-share/E2SFCA accessibility scoring,
+  which is analytical modeling out of scope for this ingestion work.

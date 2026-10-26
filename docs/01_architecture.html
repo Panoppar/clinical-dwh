@@ -68,10 +68,10 @@ table.checklist td:first-child { width: 28px; text-align: center; }
 <nav class="toc"><strong>Jump to:</strong> <a href="#flow">Data Flow</a><a href="#services">Services</a><a href="#sources">Sources</a><a href="#status">Known Issues</a></nav>
 
 <h2 class="section gold" id="flow">Data Flow</h2>
-<p>Five live Thai government APIs, no flat files, no manual exports. Raw API responses land in a
-versioned, content-hashed S3-compatible store before Bronze shreds them into tables.</p>
+<p>Live Thai government APIs + 2 public geo/routing services, no flat files, no manual exports. Raw API
+responses land in a versioned, content-hashed S3-compatible store before Bronze shreds them into tables.</p>
 <div class="flow">
-  <div class="box">API<br><small>NSO / BMA / DIW / DDS / HDC</small></div>
+  <div class="box">API<br><small>NSO / BMA / DIW / DDS / HDC / geo-boundary / OSM / OSRM</small></div>
   <div class="arrow">&rarr;</div>
   <div class="box">Landing Zone<br><small>SeaweedFS, versioned, content-hashed</small></div>
   <div class="arrow">&rarr;</div>
@@ -83,9 +83,12 @@ versioned, content-hashed S3-compatible store before Bronze shreds them into tab
   <div class="arrow">&rarr;</div>
   <div class="box">Metabase<br><small>SELECT-only on gold.*</small></div>
 </div>
-<div class="callout">Each of the 5 live-API sources is wrapped in <code>run_pipeline.run_live_source()</code>,
-which logs a failure and continues rather than aborting the whole run — confirmed necessary in practice (DDS's
-outage would otherwise block Silver/Gold on every pipeline run until DDS's own team fixes their server).</div>
+<div class="callout">Each live source is wrapped in <code>run_pipeline.run_live_source()</code>, which logs a
+failure and continues rather than aborting the whole run — confirmed necessary in practice (DDS's and Overpass's
+outages would otherwise block Silver/Gold on every pipeline run). One exception to the usual
+Bronze-all&rarr;Silver-all&rarr;Gold-all ordering: OSRM's ingest needs <code>gold.dim_area</code>'s unit
+centroids as its source points, so it runs between Gold dimensions and Gold facts, not alongside the other live
+sources.</div>
 
 <h2 class="section gold" id="services">Services (docker-compose.yml)</h2>
 <div class="svcgrid">
@@ -99,14 +102,17 @@ outage would otherwise block Silver/Gold on every pipeline run until DDS's own t
   Dashboards are built manually via the Metabase UI, not by the pipeline.</p></div>
 </div>
 
-<h2 class="section gold" id="sources">The 5 Sources</h2>
+<h2 class="section gold" id="sources">The Sources</h2>
 <table class="cols">
 <tr><th>Source</th><th>What it is</th><th>Ingest script</th><th>Status</th></tr>
 <tr><td>NSO</td><td>Household income by province, socio-economic class</td><td><code>ingest_api_nso.py</code></td><td><span class="badge ok">verified</span></td></tr>
 <tr><td>BMA</td><td>Bangkok community registry, one CSV resource per fiscal year</td><td><code>ingest_api_bma.py</code></td><td><span class="badge ok">verified</span></td></tr>
 <tr><td>DIW</td><td>Factory registry, 3 provinces, amphoe-by-amphoe crawl</td><td><code>ingest_api_diw.py</code></td><td><span class="badge ok">verified</span></td></tr>
 <tr><td>DDS</td><td>Notifiable-disease ranking, CSRF-token-gated PDF report</td><td><code>ingest_api_dds.py</code></td><td><span class="badge pending">blocked — DDS backend down</span></td></tr>
-<tr><td>HDC</td><td>Health-status reports, 4 subcatalogs, ~1,100 throttled requests for a full crawl</td><td><code>ingest_api_hdc.py</code></td><td><span class="badge ok">verified</span></td></tr>
+<tr><td>HDC</td><td>Health-status reports, 4 subcatalogs (incl. 4 PM2.5-linked weekly reports), ~1,100 throttled requests for a full crawl</td><td><code>ingest_api_hdc.py</code></td><td><span class="badge ok">verified</span></td></tr>
+<tr><td>Geo boundary</td><td>Thailand admin-boundary reference (dim_area input): subdistrict/district CSV + ADM3 polygon GeoJSON</td><td><code>ingest_api_geo_boundary.py</code></td><td><span class="badge ok">verified</span></td></tr>
+<tr><td>OSM</td><td>Hospital/healthcare facilities near KMCH (Overpass API)</td><td><code>ingest_api_osm.py</code></td><td><span class="badge pending">blocked — Overpass 406</span></td></tr>
+<tr><td>OSRM</td><td>Unit-to-facility travel-time/distance matrix (public demo server)</td><td><code>ingest_api_osrm.py</code></td><td><span class="badge ok">verified</span></td></tr>
 </table>
 
 <h2 class="section gold" id="status">Known Issues</h2>
@@ -115,6 +121,11 @@ error: <code>"could not find driver (Connection: pgsql...)"</code> — a missing
 on DDS's own server, confirmed by repeated direct testing, unrelated to this code. Re-run
 <code>ingest_api_dds.run()</code> once it recovers; the landing zone exists specifically because DDS "keeps no
 archive: a finished year it stops serving cannot be fetched again."</div>
+<div class="callout warn"><strong>Overpass (OSM) blocked since 2026-10-26.</strong> The public
+<code>overpass-api.de</code> instance (incl. its <code>lz4</code> mirror) returns HTTP 406 on every request,
+confirmed from both the <code>elt-runner</code> container and the host machine directly — a block on this
+network origin, unrelated to this code. <code>ingest_api_osrm.py</code> does not depend on this succeeding: it
+always computes the travel matrix from every <code>dim_area</code> unit to the fixed KMCH coordinate.</div>
 <div class="callout"><strong>PII exclusion, DIW.</strong> The source sheet carries <code>operator_name</code>
 (factory owner's personal name) and <code>phone</code>. Both are read off the sheet (to keep column positions
 aligned) and dropped before any row is built, logged, or inserted — they never reach Bronze, Silver, Gold, or

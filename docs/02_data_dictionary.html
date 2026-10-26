@@ -202,6 +202,106 @@ table.checklist td:first-child { width: 28px; text-align: center; }
 <tr><td><code>raw_field_name</code></td><td>varchar(255)</td><td>no</td><td></td></tr>
 <tr><td><code>raw_field_value</code></td><td>text</td><td>yes</td><td></td></tr>
 </table>
+<h3 class="table-title">bronze.geo_boundary_subdistrict <span class="rowcount">7,436 rows</span></h3>
+<p class="table-desc">Raw 1:1 landing of Thailand's canonical ADM3 (subdistrict) reference CSV -- DevelopedbyWill/thailand-canonical-admin-names (GitHub, public, CC BY 4.0), fetched independently of kmch-ml's own repo. Feeds gold.dim_area.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>bronze_id</code></td><td>bigint</td><td>no</td><td>Surrogate primary key.</td></tr>
+<tr><td><code>source_file_name</code></td><td>varchar(500)</td><td>no</td><td>Landing-zone object key</td></tr>
+<tr><td><code>source_folder</code></td><td>varchar(255)</td><td>no</td><td>Landing-zone bucket/prefix</td></tr>
+<tr><td><code>source_row_number</code></td><td>int</td><td>no</td><td>1-based row position within the source file/response.</td></tr>
+<tr><td><code>file_hash</code></td><td>varchar(64)</td><td>no</td><td>SHA-256 of the landed object's bytes.</td></tr>
+<tr><td><code>ingestion_batch_id</code></td><td>varchar(100)</td><td>no</td><td>Groups every row loaded in one pipeline run.</td></tr>
+<tr><td><code>ingested_at</code></td><td>timestamp</td><td>no</td><td>Timestamp this row was written to Bronze.</td></tr>
+<tr><td><code>source_system</code></td><td>varchar(50)</td><td>no</td><td>Which of NSO/BMA/DIW/DDS/HDC this row came from.</td></tr>
+<tr><td><code>raw_tis1099_subdistrict_code</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_parent_district_tis1099_code</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_parent_province_tis1099_code</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_name_en</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_name_th</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_centroid_lat</code></td><td>varchar(50)</td><td>yes</td><td>Empty for 13 Bangkok post-2019 khwaeng splits with no polygon in this snapshot -- resolved via parent district fallback in Gold, not here.</td></tr>
+<tr><td><code>raw_centroid_lon</code></td><td>varchar(50)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_postal_code</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+</table>
+<h3 class="table-title">bronze.geo_boundary_district <span class="rowcount">928 rows</span></h3>
+<p class="table-desc">Raw 1:1 landing of the matching ADM2 (district) reference CSV, same source.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>bronze_id</code></td><td>bigint</td><td>no</td><td>Surrogate primary key.</td></tr>
+<tr><td><code>source_file_name</code></td><td>varchar(500)</td><td>no</td><td>Landing-zone object key</td></tr>
+<tr><td><code>source_folder</code></td><td>varchar(255)</td><td>no</td><td>Landing-zone bucket/prefix</td></tr>
+<tr><td><code>source_row_number</code></td><td>int</td><td>no</td><td>1-based row position within the source file/response.</td></tr>
+<tr><td><code>file_hash</code></td><td>varchar(64)</td><td>no</td><td>SHA-256 of the landed object's bytes.</td></tr>
+<tr><td><code>ingestion_batch_id</code></td><td>varchar(100)</td><td>no</td><td>Groups every row loaded in one pipeline run.</td></tr>
+<tr><td><code>ingested_at</code></td><td>timestamp</td><td>no</td><td>Timestamp this row was written to Bronze.</td></tr>
+<tr><td><code>source_system</code></td><td>varchar(50)</td><td>no</td><td>Which of NSO/BMA/DIW/DDS/HDC this row came from.</td></tr>
+<tr><td><code>raw_tis1099_district_code</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_parent_province_tis1099_code</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_name_en</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_name_th</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_centroid_lat</code></td><td>varchar(50)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_centroid_lon</code></td><td>varchar(50)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_area_km2</code></td><td>varchar(50)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_bbox_minlat</code></td><td>varchar(50)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_bbox_minlon</code></td><td>varchar(50)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_bbox_maxlat</code></td><td>varchar(50)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_bbox_maxlon</code></td><td>varchar(50)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_num_tambon</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_postal_code_prefixes</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_notes</code></td><td>varchar(500)</td><td>yes</td><td></td></tr>
+</table>
+<h3 class="table-title">bronze.geo_boundary_polygon <span class="rowcount">7,425 rows</span></h3>
+<p class="table-desc">Raw 1:1 landing of the ADM3 polygon GeoJSON (full geometry per feature, kept as source-of-truth text -- not used directly by Gold, which only needs the centroid/distance/tier derived from it).</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>bronze_id</code></td><td>bigint</td><td>no</td><td>Surrogate primary key.</td></tr>
+<tr><td><code>source_file_name</code></td><td>varchar(500)</td><td>no</td><td>Landing-zone object key</td></tr>
+<tr><td><code>source_folder</code></td><td>varchar(255)</td><td>no</td><td>Landing-zone bucket/prefix</td></tr>
+<tr><td><code>source_row_number</code></td><td>int</td><td>no</td><td>1-based row position within the source file/response.</td></tr>
+<tr><td><code>file_hash</code></td><td>varchar(64)</td><td>no</td><td>SHA-256 of the landed object's bytes.</td></tr>
+<tr><td><code>ingestion_batch_id</code></td><td>varchar(100)</td><td>no</td><td>Groups every row loaded in one pipeline run.</td></tr>
+<tr><td><code>ingested_at</code></td><td>timestamp</td><td>no</td><td>Timestamp this row was written to Bronze.</td></tr>
+<tr><td><code>source_system</code></td><td>varchar(50)</td><td>no</td><td>Which of NSO/BMA/DIW/DDS/HDC this row came from.</td></tr>
+<tr><td><code>raw_adm3_pcode</code></td><td>varchar(20)</td><td>yes</td><td>e.g. TH420803 -- strip leading TH for the bare TIS-1099 code</td></tr>
+<tr><td><code>raw_adm3_en</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_adm3_th</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_adm2_pcode</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_adm1_pcode</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_geometry_geojson</code></td><td>longtext</td><td>yes</td><td>Full Polygon/MultiPolygon geometry object, raw GeoJSON text</td></tr>
+</table>
+<h3 class="table-title">bronze.geo_hospital_facility <span class="badge pending">0 rows — Overpass blocked</span></h3>
+<p class="table-desc">Raw Overpass (OSM) API landing of hospital/healthcare facilities near KMCH. 0 rows -- Overpass's public instance (overpass-api.de, incl. its lz4 mirror) returned HTTP 406 on every request tested 2026-10-26, confirmed blocked from both the container and the host machine directly, unrelated to this code.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>bronze_id</code></td><td>bigint</td><td>no</td><td>Surrogate primary key.</td></tr>
+<tr><td><code>source_file_name</code></td><td>varchar(500)</td><td>no</td><td>Landing-zone object key</td></tr>
+<tr><td><code>source_folder</code></td><td>varchar(255)</td><td>no</td><td>Landing-zone bucket/prefix</td></tr>
+<tr><td><code>source_row_number</code></td><td>int</td><td>no</td><td>1-based row position within the source file/response.</td></tr>
+<tr><td><code>file_hash</code></td><td>varchar(64)</td><td>no</td><td>SHA-256 of the landed object's bytes.</td></tr>
+<tr><td><code>ingestion_batch_id</code></td><td>varchar(100)</td><td>no</td><td>Groups every row loaded in one pipeline run.</td></tr>
+<tr><td><code>ingested_at</code></td><td>timestamp</td><td>no</td><td>Timestamp this row was written to Bronze.</td></tr>
+<tr><td><code>source_system</code></td><td>varchar(50)</td><td>no</td><td>Which of NSO/BMA/DIW/DDS/HDC this row came from.</td></tr>
+<tr><td><code>raw_osm_type</code></td><td>varchar(20)</td><td>yes</td><td>node | way | relation</td></tr>
+<tr><td><code>raw_osm_id</code></td><td>bigint</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_lat</code></td><td>varchar(50)</td><td>yes</td><td>node lat, or way/relation center lat</td></tr>
+<tr><td><code>raw_lon</code></td><td>varchar(50)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_name</code></td><td>varchar(500)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_tags_json</code></td><td>text</td><td>yes</td><td>full OSM tags object, raw JSON text</td></tr>
+</table>
+<h3 class="table-title">bronze.geo_travel_matrix <span class="rowcount">317 rows</span></h3>
+<p class="table-desc">Raw OSRM table-API landing: every gold.dim_area unit x every gold.dim_facility destination (always includes the fixed KMCH coordinate regardless of OSM's block above). Public demo server, confirmed working.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>bronze_id</code></td><td>bigint</td><td>no</td><td>Surrogate primary key.</td></tr>
+<tr><td><code>source_file_name</code></td><td>varchar(500)</td><td>no</td><td>Landing-zone object key</td></tr>
+<tr><td><code>source_folder</code></td><td>varchar(255)</td><td>no</td><td>Landing-zone bucket/prefix</td></tr>
+<tr><td><code>source_row_number</code></td><td>int</td><td>no</td><td>1-based row position within the source file/response.</td></tr>
+<tr><td><code>file_hash</code></td><td>varchar(64)</td><td>no</td><td>SHA-256 of the landed object's bytes.</td></tr>
+<tr><td><code>ingestion_batch_id</code></td><td>varchar(100)</td><td>no</td><td>Groups every row loaded in one pipeline run.</td></tr>
+<tr><td><code>ingested_at</code></td><td>timestamp</td><td>no</td><td>Timestamp this row was written to Bronze.</td></tr>
+<tr><td><code>source_system</code></td><td>varchar(50)</td><td>no</td><td>Which of NSO/BMA/DIW/DDS/HDC this row came from.</td></tr>
+<tr><td><code>raw_source_unit_code</code></td><td>varchar(20)</td><td>yes</td><td>dim_area.unit_code</td></tr>
+<tr><td><code>raw_destination_id</code></td><td>varchar(100)</td><td>yes</td><td>OSM facility id, or the literal string KMCH for the fixed-hub destination</td></tr>
+<tr><td><code>raw_duration_s</code></td><td>varchar(50)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_distance_m</code></td><td>varchar(50)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_source_snap_m</code></td><td>varchar(50)</td><td>yes</td><td>OSRM's own snap-to-road distance for the source point</td></tr>
+<tr><td><code>raw_destination_snap_m</code></td><td>varchar(50)</td><td>yes</td><td></td></tr>
+</table>
 <h2 class="section silver" id="silver">Silver Layer</h2>
 <h3 class="table-title">silver.api_nso_income <span class="rowcount">15,400 rows</span></h3>
 <p class="table-desc">Cleansed NSO income: year cast Buddhist Era -> Christian Era, value cast to DECIMAL, text fields trimmed.</p>
@@ -283,6 +383,55 @@ table.checklist td:first-child { width: 28px; text-align: center; }
 <tr><td><code>field_name</code></td><td>varchar(255)</td><td>no</td><td></td></tr>
 <tr><td><code>field_value</code></td><td>varchar(1000)</td><td>yes</td><td>kept as text -- cast per-report in Gold, mirrors silver.hdc_indicator_observations</td></tr>
 </table>
+<h3 class="table-title">silver.geo_boundary_subdistrict <span class="rowcount">7,436 rows</span></h3>
+<p class="table-desc">Cleansed subdistrict reference: coordinates cast to DECIMAL, text trimmed.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>silver_id</code></td><td>bigint</td><td>no</td><td></td></tr>
+<tr><td><code>subdistrict_code</code></td><td>varchar(20)</td><td>no</td><td>TIS-1099, 6-digit</td></tr>
+<tr><td><code>district_code</code></td><td>varchar(20)</td><td>no</td><td>TIS-1099, 4-digit, parent</td></tr>
+<tr><td><code>province_code</code></td><td>varchar(20)</td><td>no</td><td>TIS-1099, 2-digit, parent</td></tr>
+<tr><td><code>name_en</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>name_th</code></td><td>varchar(255)</td><td>no</td><td></td></tr>
+<tr><td><code>centroid_lat</code></td><td>decimal(10,6)</td><td>yes</td><td>NULL for the 13 Bangkok post-2019 khwaeng splits with no polygon in this snapshot -- resolved via parent-district fallback in Gold</td></tr>
+<tr><td><code>centroid_lon</code></td><td>decimal(10,6)</td><td>yes</td><td></td></tr>
+<tr><td><code>postal_code</code></td><td>varchar(10)</td><td>yes</td><td></td></tr>
+</table>
+<h3 class="table-title">silver.geo_boundary_district <span class="rowcount">928 rows</span></h3>
+<p class="table-desc">Cleansed district reference: coordinates/area cast to DECIMAL, text trimmed.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>silver_id</code></td><td>bigint</td><td>no</td><td></td></tr>
+<tr><td><code>district_code</code></td><td>varchar(20)</td><td>no</td><td>TIS-1099, 4-digit</td></tr>
+<tr><td><code>province_code</code></td><td>varchar(20)</td><td>no</td><td>TIS-1099, 2-digit, parent</td></tr>
+<tr><td><code>name_en</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>name_th</code></td><td>varchar(255)</td><td>no</td><td></td></tr>
+<tr><td><code>centroid_lat</code></td><td>decimal(10,6)</td><td>yes</td><td></td></tr>
+<tr><td><code>centroid_lon</code></td><td>decimal(10,6)</td><td>yes</td><td></td></tr>
+<tr><td><code>area_km2</code></td><td>decimal(10,2)</td><td>yes</td><td></td></tr>
+<tr><td><code>num_tambon</code></td><td>smallint</td><td>yes</td><td></td></tr>
+<tr><td><code>postal_code_prefixes</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+</table>
+<h3 class="table-title">silver.geo_hospital_facility <span class="badge pending">0 rows — Overpass blocked</span></h3>
+<p class="table-desc">Cleansed OSM facilities. 0 rows -- same Overpass block as Bronze.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>silver_id</code></td><td>bigint</td><td>no</td><td></td></tr>
+<tr><td><code>osm_type</code></td><td>varchar(20)</td><td>no</td><td></td></tr>
+<tr><td><code>osm_id</code></td><td>bigint</td><td>no</td><td></td></tr>
+<tr><td><code>name</code></td><td>varchar(500)</td><td>yes</td><td></td></tr>
+<tr><td><code>lat</code></td><td>decimal(10,6)</td><td>no</td><td></td></tr>
+<tr><td><code>lon</code></td><td>decimal(10,6)</td><td>no</td><td></td></tr>
+<tr><td><code>tags_json</code></td><td>text</td><td>yes</td><td></td></tr>
+</table>
+<h3 class="table-title">silver.geo_travel_matrix <span class="rowcount">317 rows</span></h3>
+<p class="table-desc">Cleansed OSRM travel matrix: duration/distance cast to DECIMAL.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>silver_id</code></td><td>bigint</td><td>no</td><td></td></tr>
+<tr><td><code>source_unit_code</code></td><td>varchar(20)</td><td>no</td><td></td></tr>
+<tr><td><code>destination_id</code></td><td>varchar(100)</td><td>no</td><td>OSM facility id, or the literal string KMCH</td></tr>
+<tr><td><code>duration_s</code></td><td>decimal(12,2)</td><td>yes</td><td></td></tr>
+<tr><td><code>distance_m</code></td><td>decimal(14,2)</td><td>yes</td><td></td></tr>
+<tr><td><code>source_snap_m</code></td><td>decimal(10,2)</td><td>yes</td><td></td></tr>
+<tr><td><code>destination_snap_m</code></td><td>decimal(10,2)</td><td>yes</td><td></td></tr>
+</table>
 <h2 class="section gold" id="gold">Gold Layer</h2>
 <h3 class="table-title">gold.dim_date <span class="rowcount">5 rows</span></h3>
 <p class="table-desc">Calendar-year dimension spanning every year observed across the 5 sources.</p>
@@ -325,6 +474,33 @@ table.checklist td:first-child { width: 28px; text-align: center; }
 <table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
 <tr><td><code>disease_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
 <tr><td><code>disease_name</code></td><td>varchar(500)</td><td>no</td><td></td></tr>
+</table>
+<h3 class="table-title">gold.dim_area <span class="rowcount">317 rows</span></h3>
+<p class="table-desc">Catchment-area dimension (kmch-ml input-parity gap 1). 317 units across the 3 catchment provinces, grain is normally a subdistrict; Bangkok's 13 post-2019 khwaeng splits (no centroid in this snapshot) fall back to their 7 parent districts (flagged via is_district_level_fallback, same handling kmch-ml uses). catchment_tier/dist_to_kmch_km computed via Haversine distance from the fixed KMCH coordinate -- verified: the hospital's own district (ลาดกระบัง) correctly lands as the closest, core-tier unit.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>area_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>unit_code</code></td><td>varchar(20)</td><td>no</td><td>TIS-1099 subdistrict code, or parent district code for is_district_level_fallback=1 rows</td></tr>
+<tr><td><code>unit_th</code></td><td>varchar(255)</td><td>no</td><td></td></tr>
+<tr><td><code>is_district_level_fallback</code></td><td>tinyint(1)</td><td>no</td><td>1 when unit_code is a district (not subdistrict) due to missing subdistrict-level centroid data</td></tr>
+<tr><td><code>province_code</code></td><td>varchar(20)</td><td>no</td><td></td></tr>
+<tr><td><code>province_th</code></td><td>varchar(150)</td><td>no</td><td></td></tr>
+<tr><td><code>amphoe_code</code></td><td>varchar(20)</td><td>no</td><td></td></tr>
+<tr><td><code>amphoe_th</code></td><td>varchar(150)</td><td>no</td><td></td></tr>
+<tr><td><code>centroid_lat</code></td><td>decimal(10,6)</td><td>no</td><td></td></tr>
+<tr><td><code>centroid_lon</code></td><td>decimal(10,6)</td><td>no</td><td></td></tr>
+<tr><td><code>dist_to_kmch_km</code></td><td>decimal(10,3)</td><td>no</td><td>Haversine straight-line distance from centroid to the fixed KMCH coordinate -- see transform_gold_dimensions.py for the exact constant</td></tr>
+<tr><td><code>catchment_tier</code></td><td>varchar(20)</td><td>no</td><td>core (<=10km) | primary (<=20km) | extended (<=30km) | bkk_other (>30km, Bangkok) | province_other (>30km, Samut Prakan/Chachoengsao)</td></tr>
+<tr><td><code>is_catchment</code></td><td>tinyint(1)</td><td>no</td><td>1 for core/primary/extended</td></tr>
+</table>
+<h3 class="table-title">gold.dim_facility <span class="rowcount">1 rows</span></h3>
+<p class="table-desc">Hospital/facility dimension (kmch-ml input-parity gap 3). Always contains at least the fixed KMCH coordinate (destination_id='KMCH') regardless of whether OSM facility discovery has landed anything.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>facility_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>destination_id</code></td><td>varchar(100)</td><td>no</td><td>OSM facility id, or the literal string KMCH</td></tr>
+<tr><td><code>name</code></td><td>varchar(500)</td><td>yes</td><td></td></tr>
+<tr><td><code>lat</code></td><td>decimal(10,6)</td><td>no</td><td></td></tr>
+<tr><td><code>lon</code></td><td>decimal(10,6)</td><td>no</td><td></td></tr>
+<tr><td><code>is_kmch</code></td><td>tinyint(1)</td><td>no</td><td></td></tr>
 </table>
 <h3 class="table-title">gold.fact_income <span class="rowcount">15,400 rows</span></h3>
 <p class="table-desc">NSO income fact, resolved to dim_geography (province) and dim_date.</p>
@@ -393,6 +569,29 @@ table.checklist td:first-child { width: 28px; text-align: center; }
 <tr><td><code>male</code></td><td>decimal(18,2)</td><td>yes</td><td></td></tr>
 <tr><td><code>female</code></td><td>decimal(18,2)</td><td>yes</td><td></td></tr>
 <tr><td><code>total</code></td><td>decimal(18,2)</td><td>yes</td><td></td></tr>
+</table>
+<h3 class="table-title">gold.fact_hdc_weekly_observation <span class="rowcount">65,124 rows</span></h3>
+<p class="table-desc">4 PM2.5-linked weekly disease reports (kmch-ml input-parity gap 2) -- confirmed already discovered by the existing HDC subcatalog crawl (no ingest change needed), just never pivoted into Gold before. Normalized (not wide-pivoted: each week has 4+ metric variants, e.g. m/y/z/zy, undocumented meaning per HDC) into (report, year, zone, disease group, week 1-53 or NULL for annual totals, variant, value).</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>fact_id</code></td><td>bigint</td><td>no</td><td></td></tr>
+<tr><td><code>report_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>date_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>zone</code></td><td>varchar(10)</td><td>no</td><td></td></tr>
+<tr><td><code>record_index</code></td><td>int</td><td>no</td><td>which disease-group row within the report response</td></tr>
+<tr><td><code>disease_group_name</code></td><td>varchar(500)</td><td>yes</td><td>from the report's own group_name field, e.g. "Chronic obstructive pulmonary disease (J44)"</td></tr>
+<tr><td><code>ordering</code></td><td>smallint</td><td>yes</td><td>the report's own rank/position for this disease group</td></tr>
+<tr><td><code>week_number</code></td><td>tinyint</td><td>yes</td><td>1-53; NULL for the all_* annual-total rows</td></tr>
+<tr><td><code>metric_variant</code></td><td>varchar(10)</td><td>no</td><td>m | y | z | zy -- exact meaning not documented by HDC, carried as-is</td></tr>
+<tr><td><code>metric_value</code></td><td>decimal(18,2)</td><td>yes</td><td></td></tr>
+</table>
+<h3 class="table-title">gold.fact_hospital_access <span class="rowcount">317 rows</span></h3>
+<p class="table-desc">Raw unit-to-facility travel matrix (kmch-ml input-parity gap 3) -- duration/distance only, explicitly excludes kmch-ml's derived accessibility scores (Huff share, E2SFCA), which are analytical modeling out of scope here. Verified: road distance consistently exceeds straight-line distance as expected; closest units by straight-line also show shortest drive times.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>fact_id</code></td><td>bigint</td><td>no</td><td></td></tr>
+<tr><td><code>area_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>facility_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>duration_s</code></td><td>decimal(12,2)</td><td>yes</td><td></td></tr>
+<tr><td><code>distance_m</code></td><td>decimal(14,2)</td><td>yes</td><td></td></tr>
 </table>
 <h3 class="table-title">gold.agg_economic_by_province_year <span class="rowcount">154 rows</span></h3>
 <p class="table-desc">Feeds Dashboard 2 (Economic & Industrial Development). One row per province x year.</p>

@@ -1,23 +1,30 @@
 """
-Orchestrates the Bronze -> Silver pipeline for the 5 live-API sources
-(NSO income, BMA community, DIW factory registry, DDS disease ranking,
-HDC health-status).
+Orchestrates the Bronze -> Silver -> Gold pipeline for this warehouse's
+live-API sources: NSO income, BMA community, DIW factory registry, DDS
+disease ranking, HDC health-status (incl. 4 PM2.5-linked weekly reports),
+Thailand admin-boundary reference data (dim_area input), and OSM/OSRM
+hospital-access data.
 
 Usage (normally invoked via docker compose, not directly):
     docker compose run --rm elt-runner
 
 Each layer is a full refresh: every *.sql script in sql/<layer>/ drops and
 recreates its own tables, so reruns are idempotent — there is no manual
-cleanup step between runs.
+cleanup step between runs. One exception to the usual Bronze-all ->
+Silver-all -> Gold-all ordering: OSRM's ingest reads gold.dim_area's unit
+centroids as its source points, so it runs between Gold dimensions and
+Gold facts, not alongside the other live sources -- see the inline
+comment at that call site.
 
-Pruned on 2026-10-26 to cover only the live-API sources -- the file-based
-Bronze/Silver sources and the old Gold layer (DOPA, HDC manual exports,
-Lat Krabang, KMCH, factory_list, DDS health region, the old file-based
-NSO, HDC region6_13, other_health, and every Gold dimension/fact table,
-all of which depended on those sources) were removed on explicit
-instruction. A new Gold layer was then built from scratch for the 5
-live-API sources, designed bottom-up from the KPI tree + dashboard design
-in Excel\\KPI_Tree_and_Dashboard_Design.xlsx. See
+Pruned on 2026-10-25/26 to cover only the live-API sources -- the
+file-based Bronze/Silver sources and the old Gold layer (DOPA, HDC manual
+exports, Lat Krabang, KMCH, factory_list, DDS health region, the old
+file-based NSO, HDC region6_13, other_health, and every Gold dimension/
+fact table, all of which depended on those sources) were removed on
+explicit instruction. A new Gold layer was then built from scratch,
+designed bottom-up from the KPI tree + dashboard design in
+Excel\\KPI_Tree_and_Dashboard_Design.xlsx, then extended toward kmch-ml
+input parity (dim_area, weekly HDC, hospital-access) on 2026-10-26. See
 docs/03_external_reference_sources.md for verification status.
 """
 
@@ -38,14 +45,21 @@ DWH_PASSWORD = os.environ["DWH_DB_PASSWORD"]
 
 BRONZE_SCRIPTS: list[str] = [
     "bronze/10_create_bronze_api_sources.sql",
+    "bronze/11_create_bronze_geo_boundary.sql",
+    "bronze/12_create_bronze_geo_access.sql",
 ]
 SILVER_SCRIPTS: list[str] = [
     "silver/18_create_silver_api_sources.sql",
+    "silver/19_create_silver_geo_boundary.sql",
+    "silver/20_create_silver_geo_access.sql",
 ]
 GOLD_SCRIPTS: list[str] = [
     "gold/01_create_gold_dimensions.sql",
     "gold/02_create_gold_facts.sql",
     "gold/03_create_gold_agg_obt.sql",
+    "gold/04_create_gold_area_dimension.sql",
+    "gold/05_create_gold_hdc_weekly_facts.sql",
+    "gold/06_create_gold_facility_access.sql",
 ]
 
 
@@ -118,6 +132,8 @@ def print_bronze_summary() -> None:
         "api_nso_income", "api_bma_community", "api_diw_factory",
         "api_dds_disease_ranking", "api_hdc_report_catalog", "api_hdc_observations",
     ])
+    print_row_counts("bronze", ["geo_boundary_subdistrict", "geo_boundary_district", "geo_boundary_polygon"])
+    print_row_counts("bronze", ["geo_hospital_facility", "geo_travel_matrix"])
 
 
 def print_silver_summary() -> None:
@@ -125,13 +141,17 @@ def print_silver_summary() -> None:
         "api_nso_income", "api_bma_community", "api_diw_factory",
         "api_dds_disease_ranking", "api_hdc_observations",
     ])
+    print_row_counts("silver", ["geo_boundary_subdistrict", "geo_boundary_district"])
+    print_row_counts("silver", ["geo_hospital_facility", "geo_travel_matrix"])
 
 
 def print_gold_summary() -> None:
-    print_row_counts("gold", ["dim_date", "dim_geography", "dim_industry", "dim_hdc_report", "dim_disease"])
+    print_row_counts("gold", [
+        "dim_date", "dim_geography", "dim_industry", "dim_hdc_report", "dim_disease", "dim_area", "dim_facility",
+    ])
     print_row_counts("gold", [
         "fact_income", "fact_factory", "fact_community_population",
-        "fact_disease_ranking", "fact_hdc_observation",
+        "fact_disease_ranking", "fact_hdc_observation", "fact_hdc_weekly_observation", "fact_hospital_access",
     ])
     print_row_counts("gold", [
         "agg_economic_by_province_year", "agg_population_by_district_year",
@@ -161,6 +181,13 @@ def main() -> None:
     import ingest_api_hdc, extract_load_api_hdc
     run_live_source("HDC health-status API", ingest_api_hdc.run, extract_load_api_hdc.run)
 
+    import ingest_api_geo_boundary, extract_load_api_geo_boundary
+    run_live_source("Thailand admin-boundary reference (dim_area input)",
+                     ingest_api_geo_boundary.run, extract_load_api_geo_boundary.run)
+
+    import ingest_api_osm, extract_load_api_osm
+    run_live_source("OSM hospital facilities (Overpass API)", ingest_api_osm.run, extract_load_api_osm.run)
+
     print("\n=== SILVER: create tables + transform ===")
     for script in SILVER_SCRIPTS:
         run_sql_file(script)
@@ -176,6 +203,10 @@ def main() -> None:
     transform_silver_api_dds.run()
     import transform_silver_api_hdc
     transform_silver_api_hdc.run()
+    import transform_silver_geo_boundary
+    transform_silver_geo_boundary.run()
+    import transform_silver_geo_access
+    transform_silver_geo_access.run_facility()  # travel_matrix comes later -- see mid-Gold OSRM stage below
 
     print("\n=== GOLD: create tables ===")
     for script in GOLD_SCRIPTS:
@@ -184,6 +215,15 @@ def main() -> None:
     print("\n=== GOLD: build dimensions ===")
     import transform_gold_dimensions
     transform_gold_dimensions.run()
+
+    # OSRM needs gold.dim_area's unit centroids as its source points (a real
+    # dependency, not an ordering convenience) -- ingest + Bronze shred +
+    # Silver transform for the travel matrix specifically happen here,
+    # between Gold dimensions and Gold facts, not in the earlier Bronze/
+    # Silver phases alongside every other source.
+    import ingest_api_osrm, extract_load_api_osrm
+    run_live_source("OSRM hospital travel matrix", ingest_api_osrm.run, extract_load_api_osrm.run)
+    transform_silver_geo_access.run_travel_matrix()
 
     print("\n=== GOLD: build facts ===")
     import transform_gold_facts

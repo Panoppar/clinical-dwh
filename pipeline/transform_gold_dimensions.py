@@ -1,10 +1,15 @@
-"""Builds gold's 5 dimension tables from the 5 live-API Silver/Bronze
+"""Builds gold's 6 dimension tables from the live-API Silver/Bronze
 sources. dim_geography is built purely from these sources' own text
 labels (NSO/BMA/DIW all use plain geographic names) -- confirmed by direct
 inspection that BMA's `district` and DIW's `amphoe` match exactly for
 every Bangkok area checked, so a straight text union/match is safe here,
-unlike the earlier DOPA-vs-kongvut mismatch this project hit before."""
+unlike the earlier DOPA-vs-kongvut mismatch this project hit before.
 
+dim_area (kmch-ml input-parity gap 1) is a separate catchment-area
+dimension, built from silver.geo_boundary_{subdistrict,district} --
+see sql/gold/04_create_gold_area_dimension.sql for the full design note."""
+
+import math
 import os
 
 import pymysql
@@ -197,6 +202,117 @@ def _build_dim_disease(silver_conn, gold_conn):
     print(f"[gold_dim] dim_disease: {len(rows)} diseases" + (" (0 expected -- DDS backend down)" if not rows else ""))
 
 
+# kmch-ml's own hospital coordinate (Google Maps-verified, confirmed from
+# kmch-ml's config.py) -- this warehouse's catchment work is specifically
+# being built toward kmch-ml input parity, so reusing the exact constant
+# is intentional, not a hardcoded guess.
+KMCH_LAT, KMCH_LON = 13.732307519058327, 100.78967253963812
+CATCHMENT_PROVINCE_NAMES = {"10": "กรุงเทพมหานคร", "11": "สมุทรปราการ", "24": "ฉะเชิงเทรา"}
+
+
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    r = 6371.0088  # mean Earth radius, km
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lon2 - lon1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(a))
+
+
+def _catchment_tier(dist_km: float, province_code: str) -> tuple[str, bool]:
+    if dist_km <= 10:
+        return "core", True
+    if dist_km <= 20:
+        return "primary", True
+    if dist_km <= 30:
+        return "extended", True
+    return ("bkk_other" if province_code == "10" else "province_other"), False
+
+
+def _build_dim_area(silver_conn, gold_conn):
+    """Grain: one row per catchment unit, normally a subdistrict. Bangkok's
+    13 post-2019 khwaeng splits have no centroid in this snapshot (no
+    matching polygon was generalized for them) -- those fall back to their
+    parent district as a single coarser unit (kmch-ml's own documented
+    handling: 13 splits -> 7 parent districts), flagged via
+    is_district_level_fallback rather than silently dropped or guessed."""
+    with silver_conn.cursor() as scur:
+        scur.execute(
+            "SELECT subdistrict_code, district_code, province_code, name_th, centroid_lat, centroid_lon "
+            "FROM geo_boundary_subdistrict WHERE province_code IN ('10','11','24')"
+        )
+        subdistricts = scur.fetchall()
+        scur.execute(
+            "SELECT district_code, province_code, name_th, centroid_lat, centroid_lon "
+            "FROM geo_boundary_district WHERE province_code IN ('10','11','24')"
+        )
+        district_by_code = {d[0]: d for d in scur.fetchall()}
+
+    units = []  # (unit_code, unit_th, is_fallback, province_code, district_code, lat, lon)
+    missing_by_district: dict[str, list] = {}
+    for code, dcode, pcode, name_th, lat, lon in subdistricts:
+        if lat is None or lon is None:
+            missing_by_district.setdefault(dcode, []).append((code, name_th))
+            continue
+        units.append((code, name_th, False, pcode, dcode, float(lat), float(lon)))
+
+    for dcode, missing in missing_by_district.items():
+        d = district_by_code.get(dcode)
+        if d is None or d[3] is None or d[4] is None:
+            print(f"[gold_dim] WARNING: dim_area: district {dcode} has {len(missing)} subdistricts "
+                  f"missing centroid data, and the district itself also lacks centroid data -- "
+                  f"skipped entirely: {missing}")
+            continue
+        _, pcode, dname_th, dlat, dlon = d
+        units.append((dcode, dname_th, True, pcode, dcode, float(dlat), float(dlon)))
+
+    rows = []
+    for unit_code, unit_th, is_fallback, pcode, dcode, lat, lon in units:
+        d = district_by_code.get(dcode)
+        amphoe_th = d[2] if d else unit_th
+        dist = _haversine_km(lat, lon, KMCH_LAT, KMCH_LON)
+        tier, is_catchment = _catchment_tier(dist, pcode)
+        province_th = CATCHMENT_PROVINCE_NAMES.get(pcode, pcode)
+        rows.append((unit_code, unit_th, int(is_fallback), pcode, province_th, dcode, amphoe_th,
+                     lat, lon, round(dist, 3), tier, int(is_catchment)))
+
+    insert_sql = (
+        "INSERT INTO dim_area (unit_code, unit_th, is_district_level_fallback, province_code, province_th, "
+        "amphoe_code, amphoe_th, centroid_lat, centroid_lon, dist_to_kmch_km, catchment_tier, is_catchment) "
+        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+    )
+    with gold_conn.cursor() as cur:
+        cur.executemany(insert_sql, rows)
+    gold_conn.commit()
+
+    tier_counts: dict[str, int] = {}
+    for r in rows:
+        tier_counts[r[10]] = tier_counts.get(r[10], 0) + 1
+    fallback_count = sum(1 for r in rows if r[2])
+    print(f"[gold_dim] dim_area: {len(rows)} units ({fallback_count} district-level fallback) -- tiers: {tier_counts}")
+
+
+def _build_dim_facility(silver_conn, gold_conn):
+    """Always seeds the fixed KMCH coordinate as destination_id='KMCH',
+    regardless of whether OSM facility discovery has landed anything --
+    see sql/gold/06 for why."""
+    with gold_conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO dim_facility (destination_id, name, lat, lon, is_kmch) VALUES ('KMCH', %s, %s, %s, 1)",
+            ("KMCH (fixed hub coordinate)", KMCH_LAT, KMCH_LON),
+        )
+    with silver_conn.cursor() as scur:
+        scur.execute("SELECT osm_type, osm_id, name, lat, lon FROM geo_hospital_facility")
+        rows = [(f"{t}_{i}", name, lat, lon, 0) for t, i, name, lat, lon in scur.fetchall()]
+    with gold_conn.cursor() as cur:
+        cur.executemany(
+            "INSERT IGNORE INTO dim_facility (destination_id, name, lat, lon, is_kmch) VALUES (%s,%s,%s,%s,%s)",
+            rows,
+        )
+    gold_conn.commit()
+    print(f"[gold_dim] dim_facility: 1 KMCH + {len(rows)} OSM-discovered facilities")
+
+
 def run() -> None:
     silver_conn = _connect("silver")
     bronze_conn = _connect("bronze")
@@ -207,6 +323,8 @@ def run() -> None:
     _build_dim_industry(silver_conn, gold_conn)
     _build_dim_hdc_report(bronze_conn, gold_conn)
     _build_dim_disease(silver_conn, gold_conn)
+    _build_dim_area(silver_conn, gold_conn)
+    _build_dim_facility(silver_conn, gold_conn)
 
     silver_conn.close()
     bronze_conn.close()
