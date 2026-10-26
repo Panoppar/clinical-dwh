@@ -169,6 +169,11 @@ the landing zone skips re-storing identical bytes, each layer's DDL drops/recrea
   -N -e "SELECT table_schema,table_name,column_name,column_type,is_nullable,column_comment,ordinal_position FROM information_schema.columns WHERE table_schema IN ('bronze','silver','gold') ORDER BY 1,2,7;" `
   > "$env:TEMP\schema_dump.tsv"
 python docs\build_html_docs.py</code></pre></li>
+<li><strong>Browse the landing zone</strong> at <a href="http://localhost:8888/buckets/landing-zone/">http://localhost:8888/buckets/landing-zone/</a>
+-- SeaweedFS's own Filer web UI (folders by source, file download/preview, upload/new-folder). Already running
+inside the <code>landing-zone</code> container via the <code>server</code> command; exposed to the host via
+<code>LANDING_FILER_UI_HOST_PORT</code> (default 8888) in <code>docker-compose.yml</code>. No separate client
+needed -- this is the "DBeaver for the landing zone."</li>
 <li><strong>Rebuild the elt-runner image</strong> after any Python/requirements change:
 <code>docker compose build elt-runner</code></li>
 </ul>

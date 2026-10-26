@@ -86,6 +86,11 @@ services:
       - ./seaweedfs_s3_config.json:/etc/seaweedfs/s3_config.json:ro
     ports:
       - "${LANDING_S3_HOST_PORT}:8333"
+      # Filer web UI -- SeaweedFS's own browsable file explorer for the
+      # landing zone (folders/objects/metadata, download/preview), the
+      # "server" command already runs it internally, this just exposes it
+      # to the host. http://localhost:${LANDING_FILER_UI_HOST_PORT}
+      - "${LANDING_FILER_UI_HOST_PORT}:8888"
     healthcheck:
       # 403 Forbidden (unauthenticated GET /) is the correct, healthy
       # response from the S3 gateway -- wget's -q/-O would treat that as
