@@ -147,14 +147,31 @@ TABLE_DESC = {
     ("bronze", "geo_boundary_polygon"): "Raw 1:1 landing of the ADM3 polygon GeoJSON (full geometry per feature, kept as source-of-truth text -- not used directly by Gold, which only needs the centroid/distance/tier derived from it).",
     ("bronze", "geo_hospital_facility"): "Raw Overpass (OSM) API landing of hospital/healthcare facilities near KMCH. 0 rows -- Overpass's public instance (overpass-api.de, incl. its lz4 mirror) returned HTTP 406 on every request tested 2026-10-26, confirmed blocked from both the container and the host machine directly, unrelated to this code.",
     ("bronze", "geo_travel_matrix"): "Raw OSRM table-API landing: every gold.dim_area unit x every gold.dim_facility destination (always includes the fixed KMCH coordinate regardless of OSM's block above). Public demo server, confirmed working.",
+    ("bronze", "tambon_xwalk"): "Raw 1:1 landing of xwalk_tambon_unit.csv -- file-based, not a live API (a deliberate, scoped exception, see docs/06_kmch_ml_gap_closure_plan.md Gap 4). kmch-ml's own authoritative mapping of every original TIS-1099 tambon code to the merged gold.dim_area unit_code it belongs to, used to fix a grouping bug in dim_area's earlier centroid-based fallback heuristic.",
+    ("bronze", "dopa_population_year"): "Raw 1:1 landing of dim_population_year.csv -- file-based, not a live API (kmch-ml input-parity gap 1, the previously-deferred \"DOPA population\" gap, see docs/06_kmch_ml_gap_closure_plan.md Gap 1). Fine (5-yr) and coarse age-sex population bands, 9 years (2560-2568 BE), already at gold.dim_area's merged-unit grain.",
+    ("bronze", "dopa_population_supplement"): "Raw 1:1 landing of pop_total_supplement_2560_2564.csv -- pop_total only, backfills the 5 years (2560-2564) missing from dopa_population_year for Samut Prakan/Chachoengsao units specifically. Confirmed zero overlapping (unit_code, year_be) pairs with the main file before this was built -- a clean union, not a conflict to reconcile.",
+    ("bronze", "bma_migrant_general"): "Raw 1:1 landing of BMA's migrant-worker-permit publication (2568 BE snapshot), section A: 6 permit categories, no nationality breakdown (kmch-ml input-parity gap 2, file-based). Grain: 1 grand-total row + 10 zone rows (BMA's own zone numbering, each zone a list of districts).",
+    ("bronze", "bma_migrant_mou_import"): "Same source, section B: the 'นำเข้าตาม MOU' category broken down by nationality (Myanmar/Laos/Cambodia/Vietnam). Verified: this section's own grand total exactly equals bma_migrant_general's 'นำเข้าตาม MOU' category total.",
+    ("bronze", "bma_migrant_renewal"): "Same source, section C: the 'ต่ออายุ' (renewal) category broken down by nationality. Same cross-section reconciliation verified as bma_migrant_mou_import.",
+    ("bronze", "bma_migrant_illegal"): "Same source, section D: the 'จดทะเบียนสถานะไม่ถูกกฎหมาย' (illegal registration) category broken down by nationality. Same cross-section reconciliation verified as bma_migrant_mou_import.",
     ("silver", "geo_boundary_subdistrict"): "Cleansed subdistrict reference: coordinates cast to DECIMAL, text trimmed.",
     ("silver", "geo_boundary_district"): "Cleansed district reference: coordinates/area cast to DECIMAL, text trimmed.",
     ("silver", "geo_hospital_facility"): "Cleansed OSM facilities. 0 rows -- same Overpass block as Bronze.",
     ("silver", "geo_travel_matrix"): "Cleansed OSRM travel matrix: duration/distance cast to DECIMAL.",
-    ("gold", "dim_area"): "Catchment-area dimension (kmch-ml input-parity gap 1). 317 units across the 3 catchment provinces, grain is normally a subdistrict; Bangkok's 13 post-2019 khwaeng splits (no centroid in this snapshot) fall back to their 7 parent districts (flagged via is_district_level_fallback, same handling kmch-ml uses). catchment_tier/dist_to_kmch_km computed via Haversine distance from the fixed KMCH coordinate -- verified: the hospital's own district (ลาดกระบัง) correctly lands as the closest, core-tier unit.",
+    ("silver", "dopa_population_by_unit_year"): "Cleansed, unioned DOPA population: casts text to INT, converts year_be->year_ce, merges dopa_population_year + dopa_population_supplement (disjoint (unit_code,year_be) pairs, confirmed). data_source flags 'full' (age-sex bands) vs 'total_only' (supplement backfill) rows.",
+    ("silver", "bma_migrant_worker_permit"): "Melts the 4 bronze.bma_migrant_* wide tables into one long table, grain (zone, permit_category, nationality). nationality is NULL for the 3 categories with no breakdown available; both a nationality-NULL row and 4 nationality rows exist for the other 3 (deliberate two-grain design). Grand-total rows excluded (same is_rollup_row convention as elsewhere) -- verified every section's total exactly equals the sum of its 10 zones before relying on this.",
+    ("gold", "dim_area"): "Catchment-area dimension (kmch-ml input-parity gap 1). 312 units across the 3 catchment provinces, matching kmch-ml's own documented total exactly. Grain is normally a subdistrict; Bangkok's 13 post-2019 khwaeng splits merge into their 7 pre-2019-split parent tambons (not district-grain -- is_district_level_fallback is kept as the column name but now means \"merged pre-split group\"), grouped via bronze.tambon_xwalk (kmch-ml's own authoritative mapping) rather than a centroid heuristic -- see docs/06_kmch_ml_gap_closure_plan.md. area_km2/centroid_lat/lon/contains_kmch_point all derive from the same polygon consistently. catchment_tier/dist_to_kmch_km computed via Haversine distance from the fixed KMCH coordinate -- verified: the hospital's own subdistrict (ลาดกระบัง) correctly lands as the closest, core-tier unit, and unit 101104 (ลำปลาทิว) is the one unit whose polygon physically contains the hospital's coordinate, matching kmch-ml's reference export exactly.",
+    ("gold", "dim_tambon_unit_xwalk"): "Tambon-to-unit crosswalk (kmch-ml input-parity gap 4/6). Grain: one row per original TIS-1099 tambon code, finer than dim_area's merged-unit grain -- the 13 post-2019 khwaeng-split tambons each get their own row pointing at their shared merged unit_code. Carries postal_code and adm3_pcode (the exact key the nationwide ADM3 polygon geojson uses) so that geometry can be joined straight to dim_area without a separate crosswalk.",
     ("gold", "dim_facility"): "Hospital/facility dimension (kmch-ml input-parity gap 3). Always contains at least the fixed KMCH coordinate (destination_id='KMCH') regardless of whether OSM facility discovery has landed anything.",
     ("gold", "fact_hdc_weekly_observation"): "4 PM2.5-linked weekly disease reports (kmch-ml input-parity gap 2) -- confirmed already discovered by the existing HDC subcatalog crawl (no ingest change needed), just never pivoted into Gold before. Normalized (not wide-pivoted: each week has 4+ metric variants, e.g. m/y/z/zy, undocumented meaning per HDC) into (report, year, zone, disease group, week 1-53 or NULL for annual totals, variant, value).",
     ("gold", "fact_hospital_access"): "Raw unit-to-facility travel matrix (kmch-ml input-parity gap 3) -- duration/distance only, explicitly excludes kmch-ml's derived accessibility scores (Huff share, E2SFCA), which are analytical modeling out of scope here. Verified: road distance consistently exceeds straight-line distance as expected; closest units by straight-line also show shortest drive times.",
+    ("gold", "fact_population_by_area"): "DOPA population by unit and year (kmch-ml input-parity gap 1, the previously-deferred \"DOPA population\" gap, now built from files supplied directly -- see docs/06_kmch_ml_gap_closure_plan.md Gap 1). Grain: (unit, year). data_source='full' rows carry fine/coarse age-sex bands; 'total_only' rows (the Samut Prakan/Chachoengsao 2560-2564 backfill) carry pop_total only. Verified against source files row-for-row (e.g. unit 100101/2560 and unit 110101/2560 match exactly).",
+    ("gold", "dim_industry_division"): "TSIC 2009 2-digit division code -> English name (kmch-ml input-parity gap 3). A fixed, static, seeded reference list (34 divisions, scoped to those actually observed in the DIW factory registry's 3 catchment provinces), not ingested from any source.",
+    ("gold", "agg_industrial_concentration_by_unit_division"): "Industrial location quotient, unit x division grain (kmch-ml input-parity gap 3). Recomputed from fact_factory + dim_industry on every refresh, scoped to TSIC-2009-5-digit-coded factories only. \"region\" = the whole 3-catchment-province scope, not per-province (confirmed against kmch-ml's own export: region_share_workers for a division is identical across all 3 provinces). Verified: lq_workers/lq_factories match kmch-ml's reference export to within expected DIW-snapshot drift; industrial_concentration is a best-effort approximation of their own flag (not exact parity -- their precise rule looks like a statistical significance test, not a flat threshold).",
+    ("gold", "agg_industrial_concentration_by_unit"): "Industrial concentration summary, unit grain (kmch-ml input-parity gap 3) -- top division, its LQ, and a concentration flag per unit. factories_registered/workers_registered are ALL factories regardless of TSIC classification; factories_tsic2009_5digit is the classified subset the LQ figures are based on.",
+    ("gold", "dim_bma_zone"): "BMA's own 10-zone grouping (kmch-ml input-parity gap 2, file-based). A different grain than dim_geography/dim_area -- a zone covers several districts, hence bridge_bma_zone_district rather than a geo_key column here.",
+    ("gold", "bridge_bma_zone_district"): "Many-to-many zone<->district bridge, parsed from the source file's own district-name list (not hardcoded) and matched against dim_geography.district_name. Verified: all 50 zone-district links matched with 0 unmatched names.",
+    ("gold", "fact_migrant_worker_permit"): "Migrant worker permits by zone (kmch-ml input-parity gap 2). Single snapshot (2568 BE / 2025 CE), not a time series. nationality NULL = category-level total (bma_migrant_general); nationality-specific rows (4 per category) exist for the 3 categories with a breakdown available. Verified against source file row-for-row, including the nationality-rows-sum-to-category-total internal consistency check.",
 }
 
 GENERIC_LINEAGE_DESC = {
@@ -186,18 +203,23 @@ def build_data_dictionary():
         "bronze": ["api_nso_income", "api_bma_community", "api_diw_factory",
                    "api_dds_disease_ranking", "api_hdc_report_catalog", "api_hdc_observations",
                    "geo_boundary_subdistrict", "geo_boundary_district", "geo_boundary_polygon",
-                   "geo_hospital_facility", "geo_travel_matrix"],
+                   "geo_hospital_facility", "geo_travel_matrix", "tambon_xwalk",
+                   "dopa_population_year", "dopa_population_supplement",
+                   "bma_migrant_general", "bma_migrant_mou_import", "bma_migrant_renewal", "bma_migrant_illegal"],
         "silver": ["api_nso_income", "api_bma_community", "api_diw_factory",
                    "api_dds_disease_ranking", "api_hdc_observations",
                    "geo_boundary_subdistrict", "geo_boundary_district",
-                   "geo_hospital_facility", "geo_travel_matrix"],
+                   "geo_hospital_facility", "geo_travel_matrix", "dopa_population_by_unit_year",
+                   "bma_migrant_worker_permit"],
         "gold": ["dim_date", "dim_geography", "dim_industry", "dim_hdc_report", "dim_disease",
-                 "dim_area", "dim_facility",
+                 "dim_area", "dim_tambon_unit_xwalk", "dim_facility", "dim_industry_division", "dim_bma_zone",
                  "fact_income", "fact_factory", "fact_community_population",
                  "fact_disease_ranking", "fact_hdc_observation", "fact_hdc_weekly_observation",
-                 "fact_hospital_access",
+                 "fact_hospital_access", "fact_population_by_area",
+                 "bridge_bma_zone_district", "fact_migrant_worker_permit",
                  "agg_economic_by_province_year", "agg_population_by_district_year",
-                 "agg_health_kpi_by_province_year", "obt_regional_composite_index"],
+                 "agg_health_kpi_by_province_year", "obt_regional_composite_index",
+                 "agg_industrial_concentration_by_unit_division", "agg_industrial_concentration_by_unit"],
     }
 
     body = ['<nav class="toc"><strong>Jump to:</strong> '
@@ -282,7 +304,14 @@ sources.</div>
 <tr><td>Geo boundary</td><td>Thailand admin-boundary reference (dim_area input): subdistrict/district CSV + ADM3 polygon GeoJSON</td><td><code>ingest_api_geo_boundary.py</code></td><td><span class="badge ok">verified</span></td></tr>
 <tr><td>OSM</td><td>Hospital/healthcare facilities near KMCH (Overpass API)</td><td><code>ingest_api_osm.py</code></td><td><span class="badge pending">blocked — Overpass 406</span></td></tr>
 <tr><td>OSRM</td><td>Unit-to-facility travel-time/distance matrix (public demo server)</td><td><code>ingest_api_osrm.py</code></td><td><span class="badge ok">verified</span></td></tr>
+<tr><td>Tambon↔unit crosswalk</td><td>File-based. kmch-ml's authoritative mapping of original tambon codes to dim_area's merged units</td><td><code>ingest_file_tambon_xwalk.py</code></td><td><span class="badge ok">verified</span></td></tr>
+<tr><td>DOPA population</td><td>File-based. Population by area/year, fine+coarse age-sex bands (+ a 5-year backfill for 2 provinces)</td><td><code>ingest_file_dopa_population.py</code></td><td><span class="badge ok">verified</span></td></tr>
+<tr><td>BMA migrant worker</td><td>File-based. 2568 BE snapshot, permits by BMA's own 10-zone grouping</td><td><code>ingest_file_bma_migrant_worker.py</code></td><td><span class="badge ok">verified</span></td></tr>
 </table>
+<p class="table-desc">8 live-API sources (6 reachable, 2 blocked at the source -- see Troubleshooting in the
+runbook) + 3 file-based sources (deliberate, scoped exceptions for data with no API -- see
+<a href="03_external_reference_sources.md">03_external_reference_sources.md</a> for why each one is file-based,
+not a reversion to this project's earlier, larger file-based architecture).</p>
 
 <h2 class="section gold" id="status">Known Issues</h2>
 <div class="callout warn"><strong>DDS backend down since 2026-10-25.</strong> Every request returns a server-side
@@ -354,24 +383,27 @@ indices at the apex.</p>
 
 <h2 class="section gold" id="gold">Gold Table Reference</h2>
 <p>Full column-level detail is in <a href="02_data_dictionary.html">02_data_dictionary.html</a>. Quick map
-(14 original dashboard-feeding tables, plus 5 added 2026-10-26 toward kmch-ml input parity):</p>
+(14 original dashboard-feeding tables, plus 12 added 2026-10-26/27 toward kmch-ml input parity):</p>
 <div class="two-col">
 <div><h4>Dimensions</h4><ul>
 <li><code>dim_date</code>, <code>dim_geography</code>, <code>dim_industry</code>, <code>dim_hdc_report</code>, <code>dim_disease</code></li>
-<li><code>dim_area</code> (catchment units, kmch-ml parity), <code>dim_facility</code> (hospitals, kmch-ml parity)</li>
+<li><code>dim_area</code> (catchment units, kmch-ml parity), <code>dim_tambon_unit_xwalk</code> (tambon crosswalk, kmch-ml parity), <code>dim_facility</code> (hospitals, kmch-ml parity), <code>dim_industry_division</code> (TSIC division names, kmch-ml parity), <code>dim_bma_zone</code> (BMA's 10 zones, kmch-ml parity)</li>
 </ul><h4>Facts</h4><ul>
-<li><code>fact_income</code>, <code>fact_factory</code>, <code>fact_community_population</code></li>
+<li><code>fact_income</code>, <code>fact_factory</code> (+<code>area_key</code>, kmch-ml parity), <code>fact_community_population</code></li>
 <li><code>fact_disease_ranking</code> (0 rows, DDS pending)</li>
 <li><code>fact_hdc_observation</code> (pivoted from Silver's EAV shape)</li>
 <li><code>fact_hdc_weekly_observation</code> (PM2.5 weekly, kmch-ml parity)</li>
 <li><code>fact_hospital_access</code> (OSM/OSRM travel matrix, kmch-ml parity)</li>
+<li><code>fact_population_by_area</code> (DOPA population by unit/year, kmch-ml parity)</li>
+<li><code>bridge_bma_zone_district</code>, <code>fact_migrant_worker_permit</code> (BMA zones, kmch-ml parity)</li>
 </ul></div>
 <div><h4>Aggregates / Composite</h4><ul>
 <li><code>agg_economic_by_province_year</code></li>
 <li><code>agg_population_by_district_year</code></li>
 <li><code>agg_health_kpi_by_province_year</code></li>
 <li><code>obt_regional_composite_index</code> (K-STR-01/02/03)</li>
-</ul><p style="font-size:.85rem;color:var(--muted)">The 5 kmch-ml-parity additions aren't wired into any of
+<li><code>agg_industrial_concentration_by_unit_division</code>, <code>agg_industrial_concentration_by_unit</code> (location quotient, kmch-ml parity)</li>
+</ul><p style="font-size:.85rem;color:var(--muted)">The 12 kmch-ml-parity additions aren't wired into any of
 these aggregates or the 4 dashboards -- additive ingestion only, not a KPI/dashboard change.</p></div>
 </div>
 
@@ -395,16 +427,22 @@ Dashboards are being built manually via the Metabase UI, not generated by the pi
 def build_runbook():
     body = """
 <nav class="toc"><strong>Jump to:</strong> <a href="#prereq">Prerequisites</a><a href="#firstrun">First Deploy</a>
-<a href="#verify">Verify</a><a href="#metabase">Metabase Bootstrap</a><a href="#day2">Day-2 Ops</a>
-<a href="#troubleshooting">Troubleshooting</a><a href="#reset">Reset</a></nav>
+<a href="#verify">Verify</a><a href="#metabase">Metabase Bootstrap</a><a href="#production">Production (VM)</a>
+<a href="#day2">Day-2 Ops</a><a href="#troubleshooting">Troubleshooting</a><a href="#reset">Reset</a></nav>
 
 <h2 class="section gold" id="prereq">Prerequisites</h2>
 <ul>
-<li>Docker Desktop with Compose v2</li>
-<li>Outbound internet access to 5 government API hosts (NSO, BMA, DIW, DDS, HDC) and GitHub (if re-fetching
-anything) — this pipeline has no offline mode</li>
-<li>Python 3 with <code>openpyxl</code> only if regenerating <code>Excel\\KPI_Tree_and_Dashboard_Design.xlsx</code>
-or these docs</li>
+<li>Docker Engine with Compose v2 (Docker Desktop for local dev; plain <code>docker</code> + the
+<code>docker-compose-plugin</code> package for a Linux VM -- see <a href="#production">Production (VM)</a>)</li>
+<li>Outbound internet access to 6 live hosts (NSO, BMA, DIW, HDC, GitHub for the admin-boundary reference data,
+<code>router.project-osrm.org</code>) plus 2 that are currently blocked at the source, not this code (DDS,
+Overpass/OSM -- see Troubleshooting) — this pipeline has no offline mode</li>
+<li>A local copy of the 4 file-based inputs under <code>external-inputs/</code> (tambon crosswalk, DOPA
+population x2, BMA migrant worker permits) -- these are bind-mounted, not baked into the image, so updating any
+of them later needs no rebuild</li>
+<li>Python 3 with <code>pymysql</code> on the host only if regenerating these docs directly (dumps
+<code>information_schema</code> to <code>%TEMP%</code>, see Day-2 Ops), or <code>openpyxl</code> if
+regenerating <code>Excel\\KPI_Tree_and_Dashboard_Design.xlsx</code></li>
 </ul>
 
 <h2 class="section gold" id="firstrun">First-Time Deploy</h2>
@@ -427,14 +465,16 @@ correct yet.</p></li>
 <li><h4>Build and run the pipeline</h4>
 <pre><code>docker compose build elt-runner
 docker compose run --rm elt-runner</code></pre>
-<p class="table-desc">One-shot batch job. Ingests all 5 sources (DIW's amphoe crawl takes ~70s; HDC's full
-report crawl takes ~15-20 min at its 0.6s throttle -- this is the long pole of a first deploy), shreds to
-Bronze, cleanses to Silver, builds Gold. A source that's down (see DDS, below) logs a warning and the run
-continues -- it will NOT abort the whole deploy.</p></li>
+<p class="table-desc">One-shot batch job, full Bronze -&gt; Silver -&gt; Gold refresh every time (idempotent). Ingests
+all 8 live-API sources (DIW's amphoe crawl takes ~70s; HDC's full 119-report crawl is the long pole, typically
+10-20 min at its throttled rate -- watch for <code>[ingest_api_hdc] (N/119)...</code> advancing, this is normal,
+not a hang) and the 3 file-based sources. A source that's down (DDS, OSM -- both confirmed blocked at the
+source, not this code, see Troubleshooting) logs a warning and the run continues -- it will NOT abort the whole
+deploy.</p></li>
 </ol>
 
 <h2 class="section gold" id="verify">Verify the Deploy</h2>
-<p>The pipeline prints a row-count summary on success. Expected figures (2026-10-26 baseline; BMA/HDC will grow
+<p>The pipeline prints a row-count summary on success. Expected figures (2026-10-27 baseline; BMA/HDC will grow
 as those sources publish new fiscal years/reports):</p>
 <table class="cols checklist">
 <tr><th></th><th>Table</th><th>Expected rows</th></tr>
@@ -442,8 +482,13 @@ as those sources publish new fiscal years/reports):</p>
 <tr><td>&check;</td><td><code>bronze.api_bma_community</code></td><td>6,027</td></tr>
 <tr><td>&check;</td><td><code>bronze.api_diw_factory</code></td><td>13,683</td></tr>
 <tr><td>&#9888;</td><td><code>bronze.api_dds_disease_ranking</code></td><td>0 -- expected while DDS's backend is down (see Troubleshooting)</td></tr>
-<tr><td>&check;</td><td><code>bronze.api_hdc_observations</code></td><td>163,219</td></tr>
+<tr><td>&check;</td><td><code>bronze.api_hdc_observations</code></td><td>163,233</td></tr>
+<tr><td>&#9888;</td><td><code>bronze.geo_hospital_facility</code></td><td>0 -- expected while Overpass/OSM is blocked (see Troubleshooting)</td></tr>
 <tr><td>&check;</td><td><code>gold.dim_geography</code></td><td>451 (77 provinces + 67 districts + 307 subdistricts)</td></tr>
+<tr><td>&check;</td><td><code>gold.dim_area</code></td><td>312 catchment units (exact match to kmch-ml's own documented total)</td></tr>
+<tr><td>&check;</td><td><code>gold.fact_factory</code></td><td>13,683 (~97% with <code>area_key</code> resolved)</td></tr>
+<tr><td>&check;</td><td><code>gold.fact_population_by_area</code></td><td>2,808</td></tr>
+<tr><td>&check;</td><td><code>gold.fact_migrant_worker_permit</code></td><td>180</td></tr>
 <tr><td>&check;</td><td><code>gold.obt_regional_composite_index</code></td><td>154 (province x year combinations)</td></tr>
 </table>
 <p>Spot-check manually if any number looks off:</p>
@@ -487,6 +532,110 @@ table shows <code>"initial_sync_status":"complete"</code>.</p>
 instance) is added automatically during setup. Remove it for a clean workspace:
 <code>DELETE /api/database/1</code> with the admin session header.</div>
 
+<h2 class="section gold" id="production">Production Deployment (VM)</h2>
+<p>Everything above works unchanged on a VM -- Docker Compose doesn't care whether it's running on a laptop or a
+server. The differences below are what actually matters once the warehouse is reachable over a network instead
+of just <code>localhost</code>, and left running unattended for weeks instead of a dev session.</p>
+
+<h4>Sizing (baseline, not a hard minimum)</h4>
+<ul>
+<li><strong>2 vCPU / 4GB RAM</strong> comfortably runs the 3 persistent services (MySQL, SeaweedFS, Metabase)
+idle; the <code>elt-runner</code> batch job is CPU-light (mostly waiting on throttled HTTP requests) so it
+doesn't need dedicated headroom, just enough to not starve the other 3 while it runs.</li>
+<li><strong>20GB disk</strong> minimum. Current data footprint is small (38+ Bronze/Silver/Gold tables, largest
+at ~163K rows) -- the landing zone is the one that grows over time, though content-addressed dedup means a
+source that returns unchanged bytes on every re-run (the common case) adds nothing. Budget more if re-running
+frequently against sources that change often (HDC's own data updates faster than the others).</li>
+</ul>
+
+<h4>OS and Docker install</h4>
+<p class="table-desc">Docker Desktop is a dev-machine product -- a VM runs plain Docker Engine + the Compose v2
+plugin instead (Ubuntu Server LTS is a reasonable default target):</p>
+<pre><code># Ubuntu/Debian -- see docs.docker.com for other distros
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker $USER   # log out/in once for this to take effect
+docker compose version          # confirms the v2 plugin, not the old standalone docker-compose</code></pre>
+
+<h4>Docker log limits -- already configured, verify it took effect</h4>
+<p class="table-desc">Every service in <code>docker-compose.yml</code> caps its own json-file log via a shared
+<code>x-logging</code> anchor (<code>max-size: 3m</code>, <code>max-file: 2</code> -- 6MB worst case per
+service). Docker's own default has <strong>no cap at all</strong>, so this matters most on a VM where disk is
+finite and nobody's watching interactively. Confirm it's actually applied after bringing services up:</p>
+<pre><code>docker inspect cdw-warehouse-db --format '{{json .HostConfig.LogConfig}}'
+# expect: {"Type":"json-file","Config":{"max-file":"2","max-size":"3m"}}</code></pre>
+<div class="callout warn">This caps <em>container</em> logs only. It does not cap the 3 data volumes
+(<code>warehouse_db_data</code>, <code>metabase_data</code>, <code>landing_zone_data</code>) -- those grow with
+real data, by design, and are what Day-2 backups below protect.</div>
+
+<h4>Persist across reboots</h4>
+<p class="table-desc"><code>warehouse-db</code>, <code>landing-zone</code>, and <code>metabase</code> already
+have <code>restart: unless-stopped</code> -- Docker itself restarts them after a host reboot, as long as the
+Docker daemon is enabled to start on boot (<code>get.docker.com</code>'s installer does this automatically;
+confirm with <code>systemctl is-enabled docker</code>). <code>elt-runner</code> intentionally has no restart
+policy -- it's a one-shot batch job, not a daemon; scheduling re-runs is a cron concern, below.</p>
+
+<h4>Schedule periodic pipeline runs</h4>
+<p class="table-desc">There's no built-in scheduler -- a VM deployment that wants fresh data without someone
+running the command by hand needs a cron entry:</p>
+<pre><code># /etc/cron.d/clinical-dwh-pipeline -- daily at 02:00 local time
+0 2 * * * root cd /opt/clinical-dwh && docker compose run --rm elt-runner >> /var/log/clinical-dwh-pipeline.log 2>&1</code></pre>
+<div class="callout warn">Redirecting cron's own output to a plain log file sidesteps the container log cap above
+-- rotate that file too (<code>logrotate</code>, or just redirect to <code>docker compose run --rm elt-runner
+2>&amp;1 | tail -n 1000 > /var/log/clinical-dwh-pipeline.log</code> to keep only the latest run).</div>
+
+<h4>Network exposure</h4>
+<p class="table-desc">By default every port in <code>docker-compose.yml</code> binds to all interfaces
+(<code>0.0.0.0</code>) -- fine on a laptop behind a home router, not fine on a VM with a public IP.</p>
+<ul>
+<li><strong>Metabase (3000)</strong> is the only service end users need. If exposing it beyond the VM's own
+internal network, put a reverse proxy in front for TLS (Caddy or nginx with Let's Encrypt) rather than exposing
+Metabase's own HTTP port directly -- it has no TLS of its own.</li>
+<li><strong>warehouse-db (3306) and landing-zone (8333/8888) should not be internet-facing.</strong> Change
+their host-port bindings in <code>docker-compose.yml</code> from <code>"${PORT}:3306"</code> to
+<code>"127.0.0.1:${PORT}:3306"</code> (same pattern for the other two) so they're reachable from the VM itself
+and anything in the same Docker network, but not from outside -- nothing external needs direct DB or landing-zone
+access; Metabase already reaches warehouse-db over the internal <code>cdw-net</code> bridge network regardless.</li>
+<li>If a cloud firewall/security-group is available at the VM level, use it as the primary control -- only open
+22 (SSH) and whichever port fronts Metabase (443 if behind a reverse proxy, 3000 if not).</li>
+</ul>
+
+<h4>Secrets</h4>
+<ul>
+<li><strong>Change every <code>ChangeMe_*</code> password in <code>.env</code> and
+<code>seaweedfs_s3_config.json</code> before this VM is reachable by anyone else</strong> -- the defaults in
+this repo are placeholders, not production credentials.</li>
+<li><code>chmod 600 .env seaweedfs_s3_config.json</code> -- both contain plaintext credentials; restrict to the
+deploying user.</li>
+<li>Neither file belongs in version control -- confirm both are gitignored before pushing this VM's working
+copy anywhere.</li>
+</ul>
+
+<h4>Backups</h4>
+<p class="table-desc">The 3 named volumes are the entire state of the warehouse. A logical MySQL dump is more
+portable and consistent than a raw volume copy for the database specifically:</p>
+<pre><code># Database -- logical dump, safe to take while the DB is running
+docker compose exec warehouse-db mysqldump --default-character-set=utf8mb4 -u root -p --all-databases \\
+  > backup_$(date +%Y%m%d).sql
+
+# Metabase + landing zone -- raw volume archives (stop the service first for a consistent snapshot,
+# or accept a small risk of an in-flight write on a running one)
+docker run --rm -v clinical-dwh_metabase_data:/data -v $(pwd):/backup alpine \\
+  tar czf /backup/metabase_$(date +%Y%m%d).tar.gz -C /data .
+docker run --rm -v clinical-dwh_landing_zone_data:/data -v $(pwd):/backup alpine \\
+  tar czf /backup/landingzone_$(date +%Y%m%d).tar.gz -C /data .</code></pre>
+<div class="callout">The landing zone is re-derivable by re-running the pipeline against live sources (except
+DDS/OSM while those remain blocked, and the 4 file-based inputs, which only exist wherever
+<code>external-inputs/</code> is kept outside the container) -- lower backup priority than the database itself,
+whose Gold layer took real compute (HDC's throttled crawl, OSRM's tiled routing) to rebuild from scratch.</div>
+
+<h4>Disk monitoring</h4>
+<pre><code>docker system df            # image/container/volume disk usage at a glance
+df -h /var/lib/docker        # or wherever Docker's data-root actually lives on this VM</code></pre>
+<div class="callout warn"><code>docker system prune</code> removes stopped containers, unused networks, and
+dangling images -- safe in general, but never run <code>-a</code> or <code>--volumes</code> without reading what
+it would remove first; <code>--volumes</code> can delete the named volumes this warehouse's entire state lives
+in if they're not currently attached to a running container.</div>
+
 <h2 class="section gold" id="day2">Day-2 Operations</h2>
 <ul>
 <li><strong>Re-run the pipeline</strong> any time: <code>docker compose run --rm elt-runner</code>. Idempotent --
@@ -516,6 +665,13 @@ missing its PostgreSQL PHP driver, not fixable from this side. Nothing to do but
 NSO's API blocks the default requests/curl User-Agent. Confirm <code>ingest_api_nso.py</code> still sends
 <code>User-Agent: Mozilla/5.0 kmch-phase3-nso/1.0</code> -- if NSO changes their WAF rules, the fix is a
 different UA string, not a code redesign.</div>
+<div class="callout warn"><strong>OSM facility discovery returns HTTP 406 from every Overpass endpoint.</strong>
+Confirmed by direct testing (both from inside the container and from the host machine directly) that Overpass's
+public instance (<code>overpass-api.de</code>, including its <code>lz4</code> mirror) is blocking this network
+origin -- unrelated to this code. <code>ingest_api_osrm.py</code> does not depend on this succeeding (it always
+computes the travel matrix to the fixed KMCH coordinate regardless), so this only affects
+<code>dim_facility</code> staying at 1 row (KMCH itself). Retry periodically; worth trying a different Overpass
+mirror if this persists.</div>
 <div class="callout"><strong>landing-zone container is "unhealthy".</strong> Its healthcheck accepts any HTTP
 response as healthy (even 403) -- a real failure means the container can't be reached at all. Check
 <code>docker compose logs landing-zone</code>; a common cause is <code>seaweedfs_s3_config.json</code> missing

@@ -3,7 +3,10 @@ Orchestrates the Bronze -> Silver -> Gold pipeline for this warehouse's
 live-API sources: NSO income, BMA community, DIW factory registry, DDS
 disease ranking, HDC health-status (incl. 4 PM2.5-linked weekly reports),
 Thailand admin-boundary reference data (dim_area input), and OSM/OSRM
-hospital-access data.
+hospital-access data. Plus one deliberate file-based exception: kmch-ml's
+own tambon-to-unit crosswalk (see docs/06_kmch_ml_gap_closure_plan.md,
+Gap 4), needed to group dim_area's 7 Bangkok post-2019 khwaeng-split
+groups correctly -- not derivable from any live source.
 
 Usage (normally invoked via docker compose, not directly):
     docker compose run --rm elt-runner
@@ -47,11 +50,16 @@ BRONZE_SCRIPTS: list[str] = [
     "bronze/10_create_bronze_api_sources.sql",
     "bronze/11_create_bronze_geo_boundary.sql",
     "bronze/12_create_bronze_geo_access.sql",
+    "bronze/13_create_bronze_tambon_xwalk.sql",
+    "bronze/14_create_bronze_dopa_population.sql",
+    "bronze/15_create_bronze_bma_migrant_worker.sql",
 ]
 SILVER_SCRIPTS: list[str] = [
     "silver/18_create_silver_api_sources.sql",
     "silver/19_create_silver_geo_boundary.sql",
     "silver/20_create_silver_geo_access.sql",
+    "silver/21_create_silver_dopa_population.sql",
+    "silver/22_create_silver_bma_migrant_worker.sql",
 ]
 GOLD_SCRIPTS: list[str] = [
     "gold/01_create_gold_dimensions.sql",
@@ -60,6 +68,11 @@ GOLD_SCRIPTS: list[str] = [
     "gold/04_create_gold_area_dimension.sql",
     "gold/05_create_gold_hdc_weekly_facts.sql",
     "gold/06_create_gold_facility_access.sql",
+    "gold/07_create_gold_tambon_xwalk.sql",
+    "gold/08_create_gold_population_facts.sql",
+    "gold/09_create_gold_industry_division.sql",
+    "gold/10_create_gold_industrial_concentration.sql",
+    "gold/11_create_gold_bma_zone.sql",
 ]
 
 
@@ -84,13 +97,16 @@ def run_live_source(label: str, ingest_fn, load_fn) -> None:
     returning a server-side DB-driver error on 2026-10-25, unrelated to any
     request this pipeline sends). One external outage must not abort the
     whole run for every other source, so a failure here is logged and the
-    run moves on."""
-    print(f"\n=== BRONZE: ingest + load live {label} ===")
+    run moves on. Despite the name, also used for file-based sources (see
+    the tambon-unit crosswalk call below) -- the same resilience applies:
+    a missing/unreadable local file shouldn't abort every other source
+    either. Each call site's own label says "live API" or "file-based"."""
+    print(f"\n=== BRONZE: ingest + load {label} ===")
     try:
         ingest_fn()
         load_fn()
     except Exception as exc:  # noqa: BLE001
-        print(f"[pipeline] WARNING: live {label} failed, skipping ({type(exc).__name__}: {exc})", file=sys.stderr)
+        print(f"[pipeline] WARNING: {label} failed, skipping ({type(exc).__name__}: {exc})", file=sys.stderr)
 
 
 def run_sql_file(relative_path: str) -> None:
@@ -134,6 +150,9 @@ def print_bronze_summary() -> None:
     ])
     print_row_counts("bronze", ["geo_boundary_subdistrict", "geo_boundary_district", "geo_boundary_polygon"])
     print_row_counts("bronze", ["geo_hospital_facility", "geo_travel_matrix"])
+    print_row_counts("bronze", ["tambon_xwalk"])
+    print_row_counts("bronze", ["dopa_population_year", "dopa_population_supplement"])
+    print_row_counts("bronze", ["bma_migrant_general", "bma_migrant_mou_import", "bma_migrant_renewal", "bma_migrant_illegal"])
 
 
 def print_silver_summary() -> None:
@@ -143,19 +162,24 @@ def print_silver_summary() -> None:
     ])
     print_row_counts("silver", ["geo_boundary_subdistrict", "geo_boundary_district"])
     print_row_counts("silver", ["geo_hospital_facility", "geo_travel_matrix"])
+    print_row_counts("silver", ["dopa_population_by_unit_year"])
+    print_row_counts("silver", ["bma_migrant_worker_permit"])
 
 
 def print_gold_summary() -> None:
     print_row_counts("gold", [
-        "dim_date", "dim_geography", "dim_industry", "dim_hdc_report", "dim_disease", "dim_area", "dim_facility",
+        "dim_date", "dim_geography", "dim_industry", "dim_hdc_report", "dim_disease", "dim_area",
+        "dim_tambon_unit_xwalk", "dim_facility", "dim_industry_division", "dim_bma_zone",
     ])
     print_row_counts("gold", [
         "fact_income", "fact_factory", "fact_community_population",
         "fact_disease_ranking", "fact_hdc_observation", "fact_hdc_weekly_observation", "fact_hospital_access",
+        "fact_population_by_area", "fact_migrant_worker_permit", "bridge_bma_zone_district",
     ])
     print_row_counts("gold", [
         "agg_economic_by_province_year", "agg_population_by_district_year",
         "agg_health_kpi_by_province_year", "obt_regional_composite_index",
+        "agg_industrial_concentration_by_unit_division", "agg_industrial_concentration_by_unit",
     ])
 
 
@@ -167,26 +191,38 @@ def main() -> None:
         run_sql_file(script)
 
     import ingest_api_nso, extract_load_api_nso
-    run_live_source("NSO income API", ingest_api_nso.run, extract_load_api_nso.run)
+    run_live_source("live NSO income API", ingest_api_nso.run, extract_load_api_nso.run)
 
     import ingest_api_bma, extract_load_api_bma
-    run_live_source("BMA community API", ingest_api_bma.run, extract_load_api_bma.run)
+    run_live_source("live BMA community API", ingest_api_bma.run, extract_load_api_bma.run)
 
     import ingest_api_diw, extract_load_api_diw
-    run_live_source("DIW factory registry API", ingest_api_diw.run, extract_load_api_diw.run)
+    run_live_source("live DIW factory registry API", ingest_api_diw.run, extract_load_api_diw.run)
 
     import ingest_api_dds, extract_load_api_dds
-    run_live_source("DDS disease ranking API", ingest_api_dds.run, extract_load_api_dds.run)
+    run_live_source("live DDS disease ranking API", ingest_api_dds.run, extract_load_api_dds.run)
 
     import ingest_api_hdc, extract_load_api_hdc
-    run_live_source("HDC health-status API", ingest_api_hdc.run, extract_load_api_hdc.run)
+    run_live_source("live HDC health-status API", ingest_api_hdc.run, extract_load_api_hdc.run)
 
     import ingest_api_geo_boundary, extract_load_api_geo_boundary
-    run_live_source("Thailand admin-boundary reference (dim_area input)",
+    run_live_source("live Thailand admin-boundary reference (dim_area input)",
                      ingest_api_geo_boundary.run, extract_load_api_geo_boundary.run)
 
     import ingest_api_osm, extract_load_api_osm
-    run_live_source("OSM hospital facilities (Overpass API)", ingest_api_osm.run, extract_load_api_osm.run)
+    run_live_source("live OSM hospital facilities (Overpass API)", ingest_api_osm.run, extract_load_api_osm.run)
+
+    import ingest_file_tambon_xwalk, extract_load_file_tambon_xwalk
+    run_live_source("file-based tambon-unit crosswalk (dim_area grouping fix, kmch-ml input-parity gap 4/6)",
+                     ingest_file_tambon_xwalk.run, extract_load_file_tambon_xwalk.run)
+
+    import ingest_file_dopa_population, extract_load_file_dopa_population
+    run_live_source("file-based DOPA population (kmch-ml input-parity gap 1)",
+                     ingest_file_dopa_population.run, extract_load_file_dopa_population.run)
+
+    import ingest_file_bma_migrant_worker, extract_load_file_bma_migrant_worker
+    run_live_source("file-based BMA migrant worker permits (kmch-ml input-parity gap 2)",
+                     ingest_file_bma_migrant_worker.run, extract_load_file_bma_migrant_worker.run)
 
     print("\n=== SILVER: create tables + transform ===")
     for script in SILVER_SCRIPTS:
@@ -207,6 +243,10 @@ def main() -> None:
     transform_silver_geo_boundary.run()
     import transform_silver_geo_access
     transform_silver_geo_access.run_facility()  # travel_matrix comes later -- see mid-Gold OSRM stage below
+    import transform_silver_dopa_population
+    transform_silver_dopa_population.run()  # must run before transform_gold_dimensions.run() -- _build_dim_date reads its year_ce range
+    import transform_silver_bma_migrant_worker
+    transform_silver_bma_migrant_worker.run()
 
     print("\n=== GOLD: create tables ===")
     for script in GOLD_SCRIPTS:
@@ -222,7 +262,7 @@ def main() -> None:
     # between Gold dimensions and Gold facts, not in the earlier Bronze/
     # Silver phases alongside every other source.
     import ingest_api_osrm, extract_load_api_osrm
-    run_live_source("OSRM hospital travel matrix", ingest_api_osrm.run, extract_load_api_osrm.run)
+    run_live_source("live OSRM hospital travel matrix", ingest_api_osrm.run, extract_load_api_osrm.run)
     transform_silver_geo_access.run_travel_matrix()
 
     print("\n=== GOLD: build facts ===")

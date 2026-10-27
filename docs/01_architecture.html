@@ -113,7 +113,14 @@ sources.</div>
 <tr><td>Geo boundary</td><td>Thailand admin-boundary reference (dim_area input): subdistrict/district CSV + ADM3 polygon GeoJSON</td><td><code>ingest_api_geo_boundary.py</code></td><td><span class="badge ok">verified</span></td></tr>
 <tr><td>OSM</td><td>Hospital/healthcare facilities near KMCH (Overpass API)</td><td><code>ingest_api_osm.py</code></td><td><span class="badge pending">blocked — Overpass 406</span></td></tr>
 <tr><td>OSRM</td><td>Unit-to-facility travel-time/distance matrix (public demo server)</td><td><code>ingest_api_osrm.py</code></td><td><span class="badge ok">verified</span></td></tr>
+<tr><td>Tambon↔unit crosswalk</td><td>File-based. kmch-ml's authoritative mapping of original tambon codes to dim_area's merged units</td><td><code>ingest_file_tambon_xwalk.py</code></td><td><span class="badge ok">verified</span></td></tr>
+<tr><td>DOPA population</td><td>File-based. Population by area/year, fine+coarse age-sex bands (+ a 5-year backfill for 2 provinces)</td><td><code>ingest_file_dopa_population.py</code></td><td><span class="badge ok">verified</span></td></tr>
+<tr><td>BMA migrant worker</td><td>File-based. 2568 BE snapshot, permits by BMA's own 10-zone grouping</td><td><code>ingest_file_bma_migrant_worker.py</code></td><td><span class="badge ok">verified</span></td></tr>
 </table>
+<p class="table-desc">8 live-API sources (6 reachable, 2 blocked at the source -- see Troubleshooting in the
+runbook) + 3 file-based sources (deliberate, scoped exceptions for data with no API -- see
+<a href="03_external_reference_sources.md">03_external_reference_sources.md</a> for why each one is file-based,
+not a reversion to this project's earlier, larger file-based architecture).</p>
 
 <h2 class="section gold" id="status">Known Issues</h2>
 <div class="callout warn"><strong>DDS backend down since 2026-10-25.</strong> Every request returns a server-side

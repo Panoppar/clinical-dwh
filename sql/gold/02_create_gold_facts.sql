@@ -35,9 +35,17 @@ CREATE TABLE `fact_income` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Grain: one row per registered factory -- same grain as silver.api_diw_factory.
+-- area_key (kmch-ml input-parity gap 3) is additive: resolved separately
+-- from geo_key, by matching DIW's own (amphoe, tambon) text against
+-- gold.dim_tambon_unit_xwalk -- NULL where that match fails (DIW rows
+-- still resolve geo_key as before regardless). dim_area is created later
+-- in GOLD_SCRIPTS order (sql/gold/04) -- the forward FK reference here is
+-- valid under this script's own FOREIGN_KEY_CHECKS=0 (confirmed by direct
+-- testing), same as sql/gold/04's own backward reference to sql/gold/06.
 CREATE TABLE `fact_factory` (
     `fact_id`           BIGINT AUTO_INCREMENT PRIMARY KEY,
     `geo_key`           INT UNSIGNED NOT NULL COMMENT 'resolved at amphoe/district grain where available, else province',
+    `area_key`          INT UNSIGNED COMMENT 'kmch-ml input-parity gap 3 -- subdistrict/dim_area grain, resolved via (amphoe,tambon) name match against dim_tambon_unit_xwalk; NULL where unmatched',
     `industry_key`      INT UNSIGNED,
     `reg_no`            VARCHAR(100) NOT NULL,
     `factory_name`      VARCHAR(500),
@@ -45,8 +53,10 @@ CREATE TABLE `fact_factory` (
     `workers`           INT,
     `horsepower`        DECIMAL(12,2),
     KEY `ix_ff_geo` (`geo_key`),
+    KEY `ix_ff_area` (`area_key`),
     KEY `ix_ff_industry` (`industry_key`),
     CONSTRAINT `fk_ff_geo` FOREIGN KEY (`geo_key`) REFERENCES `dim_geography` (`geo_key`),
+    CONSTRAINT `fk_ff_area` FOREIGN KEY (`area_key`) REFERENCES `dim_area` (`area_key`),
     CONSTRAINT `fk_ff_industry` FOREIGN KEY (`industry_key`) REFERENCES `dim_industry` (`industry_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

@@ -102,28 +102,42 @@ def _build_fact_factory(silver_conn, gold_conn, geo_lookup):
     with gold_conn.cursor() as cur:
         cur.execute("SELECT industry_key, tsic_code, factory_type_code FROM dim_industry")
         industry_lookup = {(tsic, ftc): key for key, tsic, ftc in cur.fetchall()}
+        # kmch-ml input-parity gap 3: area_key resolved via (amphoe,tambon)
+        # text match against dim_tambon_unit_xwalk -- confirmed unique,
+        # zero duplicate (amphoe_th,tambon_th) pairs across the 3 catchment
+        # provinces before relying on this as a join key.
+        cur.execute("SELECT amphoe_th, tambon_th, unit_code FROM dim_tambon_unit_xwalk")
+        tambon_unit_lookup = {(amphoe, tambon): unit_code for amphoe, tambon, unit_code in cur.fetchall()}
+        cur.execute("SELECT area_key, unit_code FROM dim_area")
+        area_lookup = {code: key for key, code in cur.fetchall()}
 
     insert_sql = (
-        "INSERT INTO fact_factory (geo_key, industry_key, reg_no, factory_name, capital, workers, horsepower) "
-        "VALUES (%s,%s,%s,%s,%s,%s,%s)"
+        "INSERT INTO fact_factory (geo_key, area_key, industry_key, reg_no, factory_name, capital, workers, horsepower) "
+        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)"
     )
     rows = []
+    unmatched_area = 0
     with silver_conn.cursor() as scur:
         scur.execute(
-            "SELECT province, amphoe, reg_no, factory_name, capital, workers, horsepower, tsic, factory_type_code "
+            "SELECT province, amphoe, tambon, reg_no, factory_name, capital, workers, horsepower, tsic, factory_type_code "
             "FROM api_diw_factory"
         )
-        for province, amphoe, reg_no, name, capital, workers, hp, tsic, ftc in scur:
+        for province, amphoe, tambon, reg_no, name, capital, workers, hp, tsic, ftc in scur:
             geo_key = geo_lookup.get((province, amphoe, None)) or geo_lookup.get((province, None, None))
             if geo_key is None:
                 continue
             industry_key = industry_lookup.get((tsic, ftc))
-            rows.append((geo_key, industry_key, reg_no, name, capital, workers, hp))
+            unit_code = tambon_unit_lookup.get((amphoe, tambon))
+            area_key = area_lookup.get(unit_code) if unit_code else None
+            if area_key is None:
+                unmatched_area += 1
+            rows.append((geo_key, area_key, industry_key, reg_no, name, capital, workers, hp))
 
     with gold_conn.cursor() as cur:
         cur.executemany(insert_sql, rows)
     gold_conn.commit()
-    print(f"[gold_fact] fact_factory: {len(rows)} rows")
+    print(f"[gold_fact] fact_factory: {len(rows)} rows ({len(rows) - unmatched_area} with area_key resolved, "
+          f"{unmatched_area} unmatched (amphoe,tambon) pairs)")
 
 
 def _build_fact_community_population(silver_conn, gold_conn, geo_lookup):
@@ -309,6 +323,95 @@ def _build_fact_hospital_access(silver_conn, gold_conn):
     print(f"[gold_fact] fact_hospital_access: {len(rows)} rows")
 
 
+_POPULATION_FINE_COLS = [
+    "fine_male_0_4", "fine_female_0_4", "fine_male_5_9", "fine_female_5_9",
+    "fine_male_10_14", "fine_female_10_14", "fine_male_15_17", "fine_female_15_17",
+    "fine_male_18_22", "fine_female_18_22", "fine_male_23_29", "fine_female_23_29",
+    "fine_male_30_39", "fine_female_30_39", "fine_male_40_49", "fine_female_40_49",
+    "fine_male_50_59", "fine_female_50_59", "fine_male_60_plus", "fine_female_60_plus",
+]
+_POPULATION_COARSE_COLS = [
+    "coarse_male_0_14", "coarse_female_0_14", "coarse_male_15_59", "coarse_female_15_59",
+    "coarse_male_60_plus", "coarse_female_60_plus",
+]
+
+
+def _build_fact_population_by_area(silver_conn, gold_conn):
+    """kmch-ml input-parity gap 1 (the previously-deferred "DOPA
+    population" gap). Grain: one row per (unit, year) -- FK to dim_area,
+    not dim_geography (this data is already at dim_area's merged-unit
+    grain, see sql/gold/08's header note)."""
+    with gold_conn.cursor() as cur:
+        cur.execute("SELECT area_key, unit_code FROM dim_area")
+        area_lookup = {code: key for key, code in cur.fetchall()}
+
+    measure_cols = _POPULATION_FINE_COLS + _POPULATION_COARSE_COLS + [
+        "pop_male", "pop_female", "pop_total", "pop_age_known", "pop_unknown_age",
+    ]
+    with silver_conn.cursor() as scur:
+        scur.execute(
+            f"SELECT unit_code, year_ce, data_source, {', '.join(measure_cols)} "
+            f"FROM dopa_population_by_unit_year"
+        )
+        rows_in = scur.fetchall()
+
+    rows = []
+    skipped = 0
+    for rec in rows_in:
+        unit_code, year_ce, data_source = rec[0], rec[1], rec[2]
+        area_key = area_lookup.get(unit_code)
+        if area_key is None:
+            skipped += 1
+            continue
+        rows.append((area_key, year_ce, data_source, *rec[3:]))
+
+    insert_sql = (
+        "INSERT INTO fact_population_by_area (area_key, date_key, data_source, "
+        + ", ".join(measure_cols) + ") VALUES (" + ", ".join(["%s"] * (3 + len(measure_cols))) + ")"
+    )
+    with gold_conn.cursor() as cur:
+        cur.executemany(insert_sql, rows)
+    gold_conn.commit()
+
+    if skipped:
+        print(f"[gold_fact] WARNING: fact_population_by_area: {skipped} row(s) had no matching dim_area.unit_code")
+    print(f"[gold_fact] fact_population_by_area: {len(rows)} rows")
+
+
+# Source publication is titled "...2568" (BE) = 2025 CE -- a single
+# snapshot, not a time series (kmch-ml input-parity gap 2).
+BMA_MIGRANT_WORKER_YEAR_CE = 2025
+
+
+def _build_fact_migrant_worker_permit(silver_conn, gold_conn):
+    with gold_conn.cursor() as cur:
+        cur.execute("SELECT zone_key, zone_id FROM dim_bma_zone")
+        zone_lookup = {zid: zkey for zkey, zid in cur.fetchall()}
+        cur.execute("SELECT date_key FROM dim_date WHERE year_ce=%s", (BMA_MIGRANT_WORKER_YEAR_CE,))
+        row = cur.fetchone()
+        if row is None:
+            raise RuntimeError(f"fact_migrant_worker_permit: dim_date has no row for year_ce={BMA_MIGRANT_WORKER_YEAR_CE}")
+        date_key = row[0]
+
+    with silver_conn.cursor() as scur:
+        scur.execute("SELECT zone_id, permit_category, nationality, total, male, female FROM bma_migrant_worker_permit")
+        silver_rows = scur.fetchall()
+
+    rows = [
+        (zone_lookup[zone_id], date_key, category, nationality, total, male, female)
+        for zone_id, category, nationality, total, male, female in silver_rows
+    ]
+
+    insert_sql = (
+        "INSERT INTO fact_migrant_worker_permit (zone_key, date_key, permit_category, nationality, total, male, female) "
+        "VALUES (%s,%s,%s,%s,%s,%s,%s)"
+    )
+    with gold_conn.cursor() as cur:
+        cur.executemany(insert_sql, rows)
+    gold_conn.commit()
+    print(f"[gold_fact] fact_migrant_worker_permit: {len(rows)} rows")
+
+
 def run() -> None:
     silver_conn = _connect("silver")
     gold_conn = _connect("gold")
@@ -321,6 +424,8 @@ def run() -> None:
     _build_fact_hdc_observation(silver_conn, gold_conn, geo_lookup)
     _build_fact_hdc_weekly(silver_conn, gold_conn)
     _build_fact_hospital_access(silver_conn, gold_conn)
+    _build_fact_population_by_area(silver_conn, gold_conn)
+    _build_fact_migrant_worker_permit(silver_conn, gold_conn)
 
     silver_conn.close()
     gold_conn.close()

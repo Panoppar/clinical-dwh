@@ -1,26 +1,43 @@
 name: clinical-dwh
 
 # ============================================================================
-# Regional Health & Population Data Warehouse — local orchestration
+# Regional Health & Population Data Warehouse — orchestration
 #
-#   warehouse-db  : MySQL DWH hosting the bronze / silver / gold schemas.
-#                   Only bronze/silver are populated -- built entirely from
-#                   5 live Thai government APIs (NSO, BMA, DIW, DDS, HDC),
-#                   no flat files, no clinic/patient source system.
-#   elt-runner    : one-shot Python job that executes the Bronze -> Silver
-#                   pipeline for all 5 sources, then exits (run again any
-#                   time with `docker compose run --rm elt-runner`)
-#   metabase      : BI tool, connects ONLY to warehouse-db.gold (currently
-#                   empty -- no Gold layer has been built for these sources yet)
+#   warehouse-db  : MySQL DWH hosting the bronze / silver / gold schemas,
+#                   fully populated. 8 sources (6 live, 2 file-based for a
+#                   deliberate, scoped set of gaps -- see
+#                   docs/06_kmch_ml_gap_closure_plan.md), 38+ Bronze/Silver
+#                   tables, 18+ Gold tables feeding 4 Metabase dashboards.
+#   elt-runner    : one-shot Python job that executes the full
+#                   Bronze -> Silver -> Gold pipeline, then exits (run
+#                   again any time with `docker compose run --rm elt-runner`)
+#   metabase      : BI tool, connects ONLY to warehouse-db.gold via the
+#                   read-only metabase_ro account.
 #   landing-zone  : S3-compatible landing zone (SeaweedFS -- MinIO's free
 #                   container distribution was discontinued across every
 #                   registry as of this build, confirmed by direct testing)
-#                   for the live-API Bronze sources. Raw API responses land
-#                   here, versioned and content-hashed (see
+#                   for every live-API/file-based Bronze source. Raw
+#                   responses land here, versioned and content-hashed (see
 #                   pipeline/landing_store.py), before Bronze shreds them
 #                   into tables -- elt-runner itself never writes these
 #                   bytes to its own container filesystem.
+#
+# Logging: every service caps its own json-file log at a small, fixed size
+# (x-logging below) -- Docker's default driver has no cap at all, and on a
+# small production VM an unbounded log (especially elt-runner's per-request
+# HDC crawl chatter, ~1,100 requests/run) can fill the disk over time
+# unnoticed. 3MB x 2 files = 6MB worst case per service; deliberately tight
+# since these logs are for transient troubleshooting, not an audit trail
+# (every pipeline run's real provenance already lives in the warehouse
+# itself -- ingestion_batch_id, source_file_name, ingested_at on every
+# Bronze row, plus the versioned landing zone).
 # ============================================================================
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "3m"
+    max-file: "2"
 
 services:
 
@@ -28,6 +45,7 @@ services:
     image: mysql:8.0
     container_name: cdw-warehouse-db
     restart: unless-stopped
+    logging: *default-logging
     environment:
       MYSQL_ROOT_PASSWORD: ${DWH_DB_ROOT_PASSWORD}
       MYSQL_USER: ${DWH_DB_USER}
@@ -52,6 +70,7 @@ services:
     build:
       context: ./pipeline
     container_name: cdw-elt-runner
+    logging: *default-logging
     environment:
       DWH_DB_HOST: ${DWH_DB_HOST}
       DWH_DB_PORT: ${DWH_DB_PORT}
@@ -63,6 +82,7 @@ services:
       LANDING_BUCKET: ${LANDING_BUCKET}
     volumes:
       - ./sql:/app/sql:ro
+      - ./external-inputs:/app/external-inputs:ro
     depends_on:
       warehouse-db:
         condition: service_healthy
@@ -77,6 +97,7 @@ services:
     image: chrislusf/seaweedfs:latest
     container_name: cdw-landing-zone
     restart: unless-stopped
+    logging: *default-logging
     # all-in-one mode (master+volume+filer+S3 gateway) for a single-node
     # dev landing zone; -s3.config provides the access/secret key pair
     # elt-runner authenticates with (see seaweedfs_s3_config.json)
@@ -108,6 +129,7 @@ services:
     image: metabase/metabase:v0.50.19
     container_name: cdw-metabase
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "${METABASE_HOST_PORT}:3000"
     environment:

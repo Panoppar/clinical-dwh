@@ -291,12 +291,129 @@ def _build_obt_composite_index(gold_conn, income_agg, factory_agg, pop_bucket, h
     print(f"[gold_agg] obt_regional_composite_index: {len(rows)} rows")
 
 
+def _build_industrial_concentration(gold_conn):
+    """kmch-ml input-parity gap 3. Methodology reverse-engineered from
+    kmch-ml's own track_c_lq.csv/track_c_unit_summary.csv and confirmed
+    exactly against their numbers -- see sql/gold/10's header for the full
+    derivation. "region" = the whole 3-catchment-province scope (all of
+    dim_area), not per-province."""
+    with gold_conn.cursor() as cur:
+        cur.execute(
+            "SELECT ff.area_key, di.tsic_code, ff.workers "
+            "FROM fact_factory ff JOIN dim_industry di ON di.industry_key = ff.industry_key "
+            "WHERE ff.area_key IS NOT NULL"
+        )
+        factory_rows = cur.fetchall()
+        cur.execute("SELECT division_code FROM dim_industry_division")
+        known_divisions = {d for (d,) in cur.fetchall()}
+
+    # ALL factories per unit, regardless of TSIC classification -- matches
+    # track_c_unit_summary.csv's factories_registered/workers_registered.
+    all_by_unit: dict[int, dict] = {}
+    # Only TSIC-2009-5-digit-coded factories -- the base for every LQ figure.
+    classified_by_unit_division: dict[tuple, dict] = {}
+    classified_by_unit: dict[int, dict] = {}
+    region_by_division: dict[str, dict] = {}
+    region_total = {"factories": 0, "workers": 0}
+
+    for area_key, tsic_code, workers in factory_rows:
+        workers = workers or 0
+        a = all_by_unit.setdefault(area_key, {"factories": 0, "workers": 0})
+        a["factories"] += 1
+        a["workers"] += workers
+
+        if tsic_code is None or len(tsic_code) != 5:
+            continue
+        division = tsic_code[:2]
+        if division not in known_divisions:
+            # Defensive: a future DIW re-crawl could surface a division not
+            # in dim_industry_division's seed list -- skip from the LQ calc
+            # rather than fail the whole build (extend the seed list to fix).
+            continue
+
+        key = (area_key, division)
+        cd = classified_by_unit_division.setdefault(key, {"factories": 0, "workers": 0})
+        cd["factories"] += 1
+        cd["workers"] += workers
+
+        cu = classified_by_unit.setdefault(area_key, {"factories": 0, "workers": 0})
+        cu["factories"] += 1
+        cu["workers"] += workers
+
+        rd = region_by_division.setdefault(division, {"factories": 0, "workers": 0})
+        rd["factories"] += 1
+        rd["workers"] += workers
+        region_total["factories"] += 1
+        region_total["workers"] += workers
+
+    division_rows = []
+    unit_division_stats: dict[int, list] = {}
+    for (area_key, division), cd in classified_by_unit_division.items():
+        cu = classified_by_unit[area_key]
+        rd = region_by_division[division]
+        share_of_unit_workers = cd["workers"] / cu["workers"] if cu["workers"] else None
+        region_share_workers = rd["workers"] / region_total["workers"] if region_total["workers"] else None
+        region_share_factories = rd["factories"] / region_total["factories"] if region_total["factories"] else None
+        share_of_unit_factories = cd["factories"] / cu["factories"] if cu["factories"] else None
+        lq_workers = (share_of_unit_workers / region_share_workers) if share_of_unit_workers and region_share_workers else None
+        lq_factories = (share_of_unit_factories / region_share_factories) if share_of_unit_factories and region_share_factories else None
+        small_n = cd["factories"] < 3
+        # Best-effort approximation of kmch-ml's industrial_concentration
+        # flag -- see sql/gold/10's header note, not exact parity.
+        concentrated = bool(lq_workers is not None and lq_workers >= 2.0 and not small_n)
+
+        division_rows.append((
+            area_key, division, cd["factories"], cd["workers"], cu["factories"], cu["workers"],
+            share_of_unit_workers, region_share_workers, lq_workers, lq_factories,
+            int(small_n), int(concentrated),
+        ))
+        unit_division_stats.setdefault(area_key, []).append((division, cd["workers"], lq_workers, concentrated))
+
+    insert_division_sql = (
+        "INSERT INTO agg_industrial_concentration_by_unit_division "
+        "(area_key, division_code, n_factories, workers, unit_factories, unit_workers, "
+        "share_of_unit_workers, region_share_workers, lq_workers, lq_factories, small_n, industrial_concentration) "
+        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+    )
+    with gold_conn.cursor() as cur:
+        cur.executemany(insert_division_sql, division_rows)
+    gold_conn.commit()
+    print(f"[gold_agg] agg_industrial_concentration_by_unit_division: {len(division_rows)} rows")
+
+    unit_rows = []
+    for area_key, a in all_by_unit.items():
+        cu = classified_by_unit.get(area_key, {"factories": 0, "workers": 0})
+        share_not_classified = (
+            (a["workers"] - cu["workers"]) / a["workers"] if a["workers"] else None
+        )
+        divs = unit_division_stats.get(area_key, [])
+        top = max(divs, key=lambda d: d[1]) if divs else None
+        n_concentrated = sum(1 for d in divs if d[3])
+        unit_rows.append((
+            area_key, a["factories"], a["workers"], cu["factories"], share_not_classified,
+            top[0] if top else None, top[1] if top else None, top[2] if top else None,
+            n_concentrated, int(n_concentrated > 0),
+        ))
+
+    insert_unit_sql = (
+        "INSERT INTO agg_industrial_concentration_by_unit "
+        "(area_key, factories_registered, workers_registered, factories_tsic2009_5digit, "
+        "share_workers_not_classified, top_division_code, top_division_workers, top_division_lq, "
+        "n_concentrated_divisions, industrial_concentration) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+    )
+    with gold_conn.cursor() as cur:
+        cur.executemany(insert_unit_sql, unit_rows)
+    gold_conn.commit()
+    print(f"[gold_agg] agg_industrial_concentration_by_unit: {len(unit_rows)} rows")
+
+
 def run() -> None:
     gold_conn = _connect("gold")
     income_agg, factory_agg = _build_agg_economic(gold_conn)
     pop_bucket = _build_agg_population(gold_conn)
     health_bucket = _build_agg_health(gold_conn)
     _build_obt_composite_index(gold_conn, income_agg, factory_agg, pop_bucket, health_bucket)
+    _build_industrial_concentration(gold_conn)
     gold_conn.close()
 
 

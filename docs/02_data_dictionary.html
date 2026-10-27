@@ -284,7 +284,7 @@ table.checklist td:first-child { width: 28px; text-align: center; }
 <tr><td><code>raw_name</code></td><td>varchar(500)</td><td>yes</td><td></td></tr>
 <tr><td><code>raw_tags_json</code></td><td>text</td><td>yes</td><td>full OSM tags object, raw JSON text</td></tr>
 </table>
-<h3 class="table-title">bronze.geo_travel_matrix <span class="rowcount">317 rows</span></h3>
+<h3 class="table-title">bronze.geo_travel_matrix <span class="rowcount">312 rows</span></h3>
 <p class="table-desc">Raw OSRM table-API landing: every gold.dim_area unit x every gold.dim_facility destination (always includes the fixed KMCH coordinate regardless of OSM's block above). Public demo server, confirmed working.</p>
 <table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
 <tr><td><code>bronze_id</code></td><td>bigint</td><td>no</td><td>Surrogate primary key.</td></tr>
@@ -301,6 +301,200 @@ table.checklist td:first-child { width: 28px; text-align: center; }
 <tr><td><code>raw_distance_m</code></td><td>varchar(50)</td><td>yes</td><td></td></tr>
 <tr><td><code>raw_source_snap_m</code></td><td>varchar(50)</td><td>yes</td><td>OSRM's own snap-to-road distance for the source point</td></tr>
 <tr><td><code>raw_destination_snap_m</code></td><td>varchar(50)</td><td>yes</td><td></td></tr>
+</table>
+<h3 class="table-title">bronze.tambon_xwalk <span class="rowcount">323 rows</span></h3>
+<p class="table-desc">Raw 1:1 landing of xwalk_tambon_unit.csv -- file-based, not a live API (a deliberate, scoped exception, see docs/06_kmch_ml_gap_closure_plan.md Gap 4). kmch-ml's own authoritative mapping of every original TIS-1099 tambon code to the merged gold.dim_area unit_code it belongs to, used to fix a grouping bug in dim_area's earlier centroid-based fallback heuristic.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>bronze_id</code></td><td>bigint</td><td>no</td><td>Surrogate primary key.</td></tr>
+<tr><td><code>source_file_name</code></td><td>varchar(500)</td><td>no</td><td>Landing-zone object key</td></tr>
+<tr><td><code>source_folder</code></td><td>varchar(255)</td><td>no</td><td>Landing-zone bucket/prefix</td></tr>
+<tr><td><code>source_row_number</code></td><td>int</td><td>no</td><td>1-based row position within the source file/response.</td></tr>
+<tr><td><code>file_hash</code></td><td>varchar(64)</td><td>no</td><td>SHA-256 of the landed object's bytes.</td></tr>
+<tr><td><code>ingestion_batch_id</code></td><td>varchar(100)</td><td>no</td><td>Groups every row loaded in one pipeline run.</td></tr>
+<tr><td><code>ingested_at</code></td><td>timestamp</td><td>no</td><td>Timestamp this row was written to Bronze.</td></tr>
+<tr><td><code>source_system</code></td><td>varchar(50)</td><td>no</td><td>Which of NSO/BMA/DIW/DDS/HDC this row came from.</td></tr>
+<tr><td><code>raw_tambon_code</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_tambon_th</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_tambon_en</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_amphoe_code</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_postal_code</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_unit_code</code></td><td>varchar(20)</td><td>yes</td><td>kmch-ml's merged-unit identity -- equals raw_tambon_code except for the 7 Bangkok split groups</td></tr>
+<tr><td><code>raw_is_split</code></td><td>varchar(10)</td><td>yes</td><td>"True"/"False" as text, same as every other Bronze column -- cast in Silver/Gold</td></tr>
+<tr><td><code>raw_amphoe_th</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_province_code</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+</table>
+<h3 class="table-title">bronze.dopa_population_year <span class="rowcount">2,093 rows</span></h3>
+<p class="table-desc">Raw 1:1 landing of dim_population_year.csv -- file-based, not a live API (kmch-ml input-parity gap 1, the previously-deferred "DOPA population" gap, see docs/06_kmch_ml_gap_closure_plan.md Gap 1). Fine (5-yr) and coarse age-sex population bands, 9 years (2560-2568 BE), already at gold.dim_area's merged-unit grain.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>bronze_id</code></td><td>bigint</td><td>no</td><td>Surrogate primary key.</td></tr>
+<tr><td><code>source_file_name</code></td><td>varchar(500)</td><td>no</td><td>Landing-zone object key</td></tr>
+<tr><td><code>source_folder</code></td><td>varchar(255)</td><td>no</td><td>Landing-zone bucket/prefix</td></tr>
+<tr><td><code>source_row_number</code></td><td>int</td><td>no</td><td>1-based row position within the source file/response.</td></tr>
+<tr><td><code>file_hash</code></td><td>varchar(64)</td><td>no</td><td>SHA-256 of the landed object's bytes.</td></tr>
+<tr><td><code>ingestion_batch_id</code></td><td>varchar(100)</td><td>no</td><td>Groups every row loaded in one pipeline run.</td></tr>
+<tr><td><code>ingested_at</code></td><td>timestamp</td><td>no</td><td>Timestamp this row was written to Bronze.</td></tr>
+<tr><td><code>source_system</code></td><td>varchar(50)</td><td>no</td><td>Which of NSO/BMA/DIW/DDS/HDC this row came from.</td></tr>
+<tr><td><code>raw_unit_code</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_year_be</code></td><td>varchar(10)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_ref_month</code></td><td>varchar(10)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_fine_male_0_4</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_fine_female_0_4</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_fine_male_5_9</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_fine_female_5_9</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_fine_male_10_14</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_fine_female_10_14</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_fine_male_15_17</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_fine_female_15_17</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_fine_male_18_22</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_fine_female_18_22</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_fine_male_23_29</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_fine_female_23_29</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_fine_male_30_39</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_fine_female_30_39</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_fine_male_40_49</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_fine_female_40_49</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_fine_male_50_59</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_fine_female_50_59</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_fine_male_60_plus</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_fine_female_60_plus</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_coarse_male_0_14</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_coarse_female_0_14</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_coarse_male_15_59</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_coarse_female_15_59</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_coarse_male_60_plus</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_coarse_female_60_plus</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_pop_male</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_pop_female</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_pop_total</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_pop_age_known</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_pop_unknown_age</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_source_file</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+</table>
+<h3 class="table-title">bronze.dopa_population_supplement <span class="rowcount">715 rows</span></h3>
+<p class="table-desc">Raw 1:1 landing of pop_total_supplement_2560_2564.csv -- pop_total only, backfills the 5 years (2560-2564) missing from dopa_population_year for Samut Prakan/Chachoengsao units specifically. Confirmed zero overlapping (unit_code, year_be) pairs with the main file before this was built -- a clean union, not a conflict to reconcile.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>bronze_id</code></td><td>bigint</td><td>no</td><td>Surrogate primary key.</td></tr>
+<tr><td><code>source_file_name</code></td><td>varchar(500)</td><td>no</td><td>Landing-zone object key</td></tr>
+<tr><td><code>source_folder</code></td><td>varchar(255)</td><td>no</td><td>Landing-zone bucket/prefix</td></tr>
+<tr><td><code>source_row_number</code></td><td>int</td><td>no</td><td>1-based row position within the source file/response.</td></tr>
+<tr><td><code>file_hash</code></td><td>varchar(64)</td><td>no</td><td>SHA-256 of the landed object's bytes.</td></tr>
+<tr><td><code>ingestion_batch_id</code></td><td>varchar(100)</td><td>no</td><td>Groups every row loaded in one pipeline run.</td></tr>
+<tr><td><code>ingested_at</code></td><td>timestamp</td><td>no</td><td>Timestamp this row was written to Bronze.</td></tr>
+<tr><td><code>source_system</code></td><td>varchar(50)</td><td>no</td><td>Which of NSO/BMA/DIW/DDS/HDC this row came from.</td></tr>
+<tr><td><code>raw_unit_code</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_year_be</code></td><td>varchar(10)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_pop_total</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_source</code></td><td>varchar(100)</td><td>yes</td><td>e.g. "DOPA stat_t60 (ธ.ค.)" -- which DOPA snapshot file this row came from</td></tr>
+</table>
+<h3 class="table-title">bronze.bma_migrant_general <span class="rowcount">11 rows</span></h3>
+<p class="table-desc">Raw 1:1 landing of BMA's migrant-worker-permit publication (2568 BE snapshot), section A: 6 permit categories, no nationality breakdown (kmch-ml input-parity gap 2, file-based). Grain: 1 grand-total row + 10 zone rows (BMA's own zone numbering, each zone a list of districts).</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>bronze_id</code></td><td>bigint</td><td>no</td><td>Surrogate primary key.</td></tr>
+<tr><td><code>source_file_name</code></td><td>varchar(500)</td><td>no</td><td>Landing-zone object key this row was shredded from.</td></tr>
+<tr><td><code>source_folder</code></td><td>varchar(255)</td><td>no</td><td>Landing-zone bucket/prefix.</td></tr>
+<tr><td><code>source_row_number</code></td><td>int</td><td>no</td><td>1-based row position within the source file/response.</td></tr>
+<tr><td><code>file_hash</code></td><td>varchar(64)</td><td>no</td><td>SHA-256 of the landed object's bytes.</td></tr>
+<tr><td><code>ingestion_batch_id</code></td><td>varchar(100)</td><td>no</td><td>Groups every row loaded in one pipeline run.</td></tr>
+<tr><td><code>ingested_at</code></td><td>timestamp</td><td>no</td><td>Timestamp this row was written to Bronze.</td></tr>
+<tr><td><code>source_system</code></td><td>varchar(50)</td><td>no</td><td>Which of NSO/BMA/DIW/DDS/HDC this row came from.</td></tr>
+<tr><td><code>raw_zone_label</code></td><td>varchar(50)</td><td>yes</td><td>"พื้นที่ N", or empty for the grand-total row</td></tr>
+<tr><td><code>raw_zone_districts_or_label</code></td><td>varchar(500)</td><td>yes</td><td>district-name list for zone rows, or "รวมทั้งสิ้น" for the grand-total row</td></tr>
+<tr><td><code>raw_general_total</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_general_male</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_general_female</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_mou_import_total</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_mou_import_male</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_mou_import_female</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_investment_total</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_investment_male</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_investment_female</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_minority_total</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_minority_male</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_minority_female</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_renewal_total</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_renewal_male</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_renewal_female</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_illegal_total</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_illegal_male</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_illegal_female</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+</table>
+<h3 class="table-title">bronze.bma_migrant_mou_import <span class="rowcount">11 rows</span></h3>
+<p class="table-desc">Same source, section B: the 'นำเข้าตาม MOU' category broken down by nationality (Myanmar/Laos/Cambodia/Vietnam). Verified: this section's own grand total exactly equals bma_migrant_general's 'นำเข้าตาม MOU' category total.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>bronze_id</code></td><td>bigint</td><td>no</td><td>Surrogate primary key.</td></tr>
+<tr><td><code>source_file_name</code></td><td>varchar(500)</td><td>no</td><td>Landing-zone object key this row was shredded from.</td></tr>
+<tr><td><code>source_folder</code></td><td>varchar(255)</td><td>no</td><td>Landing-zone bucket/prefix.</td></tr>
+<tr><td><code>source_row_number</code></td><td>int</td><td>no</td><td>1-based row position within the source file/response.</td></tr>
+<tr><td><code>file_hash</code></td><td>varchar(64)</td><td>no</td><td>SHA-256 of the landed object's bytes.</td></tr>
+<tr><td><code>ingestion_batch_id</code></td><td>varchar(100)</td><td>no</td><td>Groups every row loaded in one pipeline run.</td></tr>
+<tr><td><code>ingested_at</code></td><td>timestamp</td><td>no</td><td>Timestamp this row was written to Bronze.</td></tr>
+<tr><td><code>source_system</code></td><td>varchar(50)</td><td>no</td><td>Which of NSO/BMA/DIW/DDS/HDC this row came from.</td></tr>
+<tr><td><code>raw_zone_label</code></td><td>varchar(50)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_zone_districts_or_label</code></td><td>varchar(500)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_myanmar_total</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_myanmar_male</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_myanmar_female</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_laos_total</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_laos_male</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_laos_female</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_cambodia_total</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_cambodia_male</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_cambodia_female</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_vietnam_total</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_vietnam_male</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_vietnam_female</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+</table>
+<h3 class="table-title">bronze.bma_migrant_renewal <span class="rowcount">11 rows</span></h3>
+<p class="table-desc">Same source, section C: the 'ต่ออายุ' (renewal) category broken down by nationality. Same cross-section reconciliation verified as bma_migrant_mou_import.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>bronze_id</code></td><td>bigint</td><td>no</td><td>Surrogate primary key.</td></tr>
+<tr><td><code>source_file_name</code></td><td>varchar(500)</td><td>no</td><td>Landing-zone object key this row was shredded from.</td></tr>
+<tr><td><code>source_folder</code></td><td>varchar(255)</td><td>no</td><td>Landing-zone bucket/prefix.</td></tr>
+<tr><td><code>source_row_number</code></td><td>int</td><td>no</td><td>1-based row position within the source file/response.</td></tr>
+<tr><td><code>file_hash</code></td><td>varchar(64)</td><td>no</td><td>SHA-256 of the landed object's bytes.</td></tr>
+<tr><td><code>ingestion_batch_id</code></td><td>varchar(100)</td><td>no</td><td>Groups every row loaded in one pipeline run.</td></tr>
+<tr><td><code>ingested_at</code></td><td>timestamp</td><td>no</td><td>Timestamp this row was written to Bronze.</td></tr>
+<tr><td><code>source_system</code></td><td>varchar(50)</td><td>no</td><td>Which of NSO/BMA/DIW/DDS/HDC this row came from.</td></tr>
+<tr><td><code>raw_zone_label</code></td><td>varchar(50)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_zone_districts_or_label</code></td><td>varchar(500)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_myanmar_total</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_myanmar_male</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_myanmar_female</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_laos_total</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_laos_male</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_laos_female</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_cambodia_total</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_cambodia_male</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_cambodia_female</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_vietnam_total</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_vietnam_male</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_vietnam_female</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+</table>
+<h3 class="table-title">bronze.bma_migrant_illegal <span class="rowcount">11 rows</span></h3>
+<p class="table-desc">Same source, section D: the 'จดทะเบียนสถานะไม่ถูกกฎหมาย' (illegal registration) category broken down by nationality. Same cross-section reconciliation verified as bma_migrant_mou_import.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>bronze_id</code></td><td>bigint</td><td>no</td><td>Surrogate primary key.</td></tr>
+<tr><td><code>source_file_name</code></td><td>varchar(500)</td><td>no</td><td>Landing-zone object key this row was shredded from.</td></tr>
+<tr><td><code>source_folder</code></td><td>varchar(255)</td><td>no</td><td>Landing-zone bucket/prefix.</td></tr>
+<tr><td><code>source_row_number</code></td><td>int</td><td>no</td><td>1-based row position within the source file/response.</td></tr>
+<tr><td><code>file_hash</code></td><td>varchar(64)</td><td>no</td><td>SHA-256 of the landed object's bytes.</td></tr>
+<tr><td><code>ingestion_batch_id</code></td><td>varchar(100)</td><td>no</td><td>Groups every row loaded in one pipeline run.</td></tr>
+<tr><td><code>ingested_at</code></td><td>timestamp</td><td>no</td><td>Timestamp this row was written to Bronze.</td></tr>
+<tr><td><code>source_system</code></td><td>varchar(50)</td><td>no</td><td>Which of NSO/BMA/DIW/DDS/HDC this row came from.</td></tr>
+<tr><td><code>raw_zone_label</code></td><td>varchar(50)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_zone_districts_or_label</code></td><td>varchar(500)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_myanmar_total</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_myanmar_male</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_myanmar_female</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_laos_total</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_laos_male</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_laos_female</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_cambodia_total</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_cambodia_male</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_cambodia_female</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_vietnam_total</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_vietnam_male</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
+<tr><td><code>raw_vietnam_female</code></td><td>varchar(20)</td><td>yes</td><td></td></tr>
 </table>
 <h2 class="section silver" id="silver">Silver Layer</h2>
 <h3 class="table-title">silver.api_nso_income <span class="rowcount">15,400 rows</span></h3>
@@ -421,7 +615,7 @@ table.checklist td:first-child { width: 28px; text-align: center; }
 <tr><td><code>lon</code></td><td>decimal(10,6)</td><td>no</td><td></td></tr>
 <tr><td><code>tags_json</code></td><td>text</td><td>yes</td><td></td></tr>
 </table>
-<h3 class="table-title">silver.geo_travel_matrix <span class="rowcount">317 rows</span></h3>
+<h3 class="table-title">silver.geo_travel_matrix <span class="rowcount">312 rows</span></h3>
 <p class="table-desc">Cleansed OSRM travel matrix: duration/distance cast to DECIMAL.</p>
 <table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
 <tr><td><code>silver_id</code></td><td>bigint</td><td>no</td><td></td></tr>
@@ -432,8 +626,61 @@ table.checklist td:first-child { width: 28px; text-align: center; }
 <tr><td><code>source_snap_m</code></td><td>decimal(10,2)</td><td>yes</td><td></td></tr>
 <tr><td><code>destination_snap_m</code></td><td>decimal(10,2)</td><td>yes</td><td></td></tr>
 </table>
+<h3 class="table-title">silver.dopa_population_by_unit_year <span class="rowcount">2,808 rows</span></h3>
+<p class="table-desc">Cleansed, unioned DOPA population: casts text to INT, converts year_be->year_ce, merges dopa_population_year + dopa_population_supplement (disjoint (unit_code,year_be) pairs, confirmed). data_source flags 'full' (age-sex bands) vs 'total_only' (supplement backfill) rows.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>silver_id</code></td><td>bigint</td><td>no</td><td></td></tr>
+<tr><td><code>unit_code</code></td><td>varchar(20)</td><td>no</td><td>FK target: gold.dim_area.unit_code</td></tr>
+<tr><td><code>year_be</code></td><td>smallint</td><td>no</td><td></td></tr>
+<tr><td><code>year_ce</code></td><td>smallint</td><td>no</td><td></td></tr>
+<tr><td><code>ref_month</code></td><td>tinyint</td><td>yes</td><td>NULL for total_only rows -- the supplement file does not carry this</td></tr>
+<tr><td><code>data_source</code></td><td>varchar(20)</td><td>no</td><td>full | total_only</td></tr>
+<tr><td><code>fine_male_0_4</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_female_0_4</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_male_5_9</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_female_5_9</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_male_10_14</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_female_10_14</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_male_15_17</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_female_15_17</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_male_18_22</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_female_18_22</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_male_23_29</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_female_23_29</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_male_30_39</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_female_30_39</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_male_40_49</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_female_40_49</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_male_50_59</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_female_50_59</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_male_60_plus</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_female_60_plus</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>coarse_male_0_14</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>coarse_female_0_14</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>coarse_male_15_59</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>coarse_female_15_59</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>coarse_male_60_plus</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>coarse_female_60_plus</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>pop_male</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>pop_female</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>pop_total</code></td><td>int</td><td>no</td><td>always present, from either source</td></tr>
+<tr><td><code>pop_age_known</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>pop_unknown_age</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>source_note</code></td><td>varchar(255)</td><td>yes</td><td>source_file for full rows, the supplement's own source label for total_only rows</td></tr>
+</table>
+<h3 class="table-title">silver.bma_migrant_worker_permit <span class="rowcount">180 rows</span></h3>
+<p class="table-desc">Melts the 4 bronze.bma_migrant_* wide tables into one long table, grain (zone, permit_category, nationality). nationality is NULL for the 3 categories with no breakdown available; both a nationality-NULL row and 4 nationality rows exist for the other 3 (deliberate two-grain design). Grand-total rows excluded (same is_rollup_row convention as elsewhere) -- verified every section's total exactly equals the sum of its 10 zones before relying on this.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>silver_id</code></td><td>bigint</td><td>no</td><td></td></tr>
+<tr><td><code>zone_id</code></td><td>tinyint</td><td>no</td><td>1-10, BMA's own zone numbering</td></tr>
+<tr><td><code>permit_category</code></td><td>varchar(100)</td><td>no</td><td>one of the 6 bma_migrant_general categories</td></tr>
+<tr><td><code>nationality</code></td><td>varchar(50)</td><td>yes</td><td>NULL = category-level total, no nationality breakdown available</td></tr>
+<tr><td><code>total</code></td><td>int</td><td>no</td><td></td></tr>
+<tr><td><code>male</code></td><td>int</td><td>no</td><td></td></tr>
+<tr><td><code>female</code></td><td>int</td><td>no</td><td></td></tr>
+</table>
 <h2 class="section gold" id="gold">Gold Layer</h2>
-<h3 class="table-title">gold.dim_date <span class="rowcount">5 rows</span></h3>
+<h3 class="table-title">gold.dim_date <span class="rowcount">10 rows</span></h3>
 <p class="table-desc">Calendar-year dimension spanning every year observed across the 5 sources.</p>
 <table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
 <tr><td><code>date_key</code></td><td>int unsigned</td><td>no</td><td>year_ce, e.g. 2025</td></tr>
@@ -475,8 +722,8 @@ table.checklist td:first-child { width: 28px; text-align: center; }
 <tr><td><code>disease_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
 <tr><td><code>disease_name</code></td><td>varchar(500)</td><td>no</td><td></td></tr>
 </table>
-<h3 class="table-title">gold.dim_area <span class="rowcount">317 rows</span></h3>
-<p class="table-desc">Catchment-area dimension (kmch-ml input-parity gap 1). 317 units across the 3 catchment provinces, grain is normally a subdistrict; Bangkok's 13 post-2019 khwaeng splits (no centroid in this snapshot) fall back to their 7 parent districts (flagged via is_district_level_fallback, same handling kmch-ml uses). catchment_tier/dist_to_kmch_km computed via Haversine distance from the fixed KMCH coordinate -- verified: the hospital's own district (ลาดกระบัง) correctly lands as the closest, core-tier unit.</p>
+<h3 class="table-title">gold.dim_area <span class="rowcount">312 rows</span></h3>
+<p class="table-desc">Catchment-area dimension (kmch-ml input-parity gap 1). 312 units across the 3 catchment provinces, matching kmch-ml's own documented total exactly. Grain is normally a subdistrict; Bangkok's 13 post-2019 khwaeng splits merge into their 7 pre-2019-split parent tambons (not district-grain -- is_district_level_fallback is kept as the column name but now means "merged pre-split group"), grouped via bronze.tambon_xwalk (kmch-ml's own authoritative mapping) rather than a centroid heuristic -- see docs/06_kmch_ml_gap_closure_plan.md. area_km2/centroid_lat/lon/contains_kmch_point all derive from the same polygon consistently. catchment_tier/dist_to_kmch_km computed via Haversine distance from the fixed KMCH coordinate -- verified: the hospital's own subdistrict (ลาดกระบัง) correctly lands as the closest, core-tier unit, and unit 101104 (ลำปลาทิว) is the one unit whose polygon physically contains the hospital's coordinate, matching kmch-ml's reference export exactly.</p>
 <table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
 <tr><td><code>area_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
 <tr><td><code>unit_code</code></td><td>varchar(20)</td><td>no</td><td>TIS-1099 subdistrict code, or parent district code for is_district_level_fallback=1 rows</td></tr>
@@ -486,11 +733,30 @@ table.checklist td:first-child { width: 28px; text-align: center; }
 <tr><td><code>province_th</code></td><td>varchar(150)</td><td>no</td><td></td></tr>
 <tr><td><code>amphoe_code</code></td><td>varchar(20)</td><td>no</td><td></td></tr>
 <tr><td><code>amphoe_th</code></td><td>varchar(150)</td><td>no</td><td></td></tr>
+<tr><td><code>amphoe_en</code></td><td>varchar(150)</td><td>yes</td><td>from silver.geo_boundary_district.name_en -- pull-through, already landed, not a new source</td></tr>
 <tr><td><code>centroid_lat</code></td><td>decimal(10,6)</td><td>no</td><td></td></tr>
 <tr><td><code>centroid_lon</code></td><td>decimal(10,6)</td><td>no</td><td></td></tr>
 <tr><td><code>dist_to_kmch_km</code></td><td>decimal(10,3)</td><td>no</td><td>Haversine straight-line distance from centroid to the fixed KMCH coordinate -- see transform_gold_dimensions.py for the exact constant</td></tr>
 <tr><td><code>catchment_tier</code></td><td>varchar(20)</td><td>no</td><td>core (<=10km) | primary (<=20km) | extended (<=30km) | bkk_other (>30km, Bangkok) | province_other (>30km, Samut Prakan/Chachoengsao)</td></tr>
 <tr><td><code>is_catchment</code></td><td>tinyint(1)</td><td>no</td><td>1 for core/primary/extended</td></tr>
+<tr><td><code>area_km2</code></td><td>decimal(12,3)</td><td>yes</td><td>spherical polygon area from bronze.geo_boundary_polygon (Chamberlain & Duquette formula, same Earth-radius constant as dist_to_kmch_km) -- NULL if no polygon was found for this unit</td></tr>
+<tr><td><code>contains_kmch_point</code></td><td>tinyint(1)</td><td>no</td><td>point-in-polygon test of the fixed KMCH coordinate against this unit's own polygon -- a stricter ground-truth check than "closest by distance"</td></tr>
+<tr><td><code>n_member</code></td><td>smallint</td><td>no</td><td>1 for ordinary units; >1 for is_district_level_fallback rows, counting the original tambons merged into it</td></tr>
+<tr><td><code>member_codes</code></td><td>varchar(255)</td><td>yes</td><td>pipe-delimited original TIS-1099 subdistrict codes merged into this unit (same convention as kmch-ml's own dim_area export)</td></tr>
+</table>
+<h3 class="table-title">gold.dim_tambon_unit_xwalk <span class="rowcount">323 rows</span></h3>
+<p class="table-desc">Tambon-to-unit crosswalk (kmch-ml input-parity gap 4/6). Grain: one row per original TIS-1099 tambon code, finer than dim_area's merged-unit grain -- the 13 post-2019 khwaeng-split tambons each get their own row pointing at their shared merged unit_code. Carries postal_code and adm3_pcode (the exact key the nationwide ADM3 polygon geojson uses) so that geometry can be joined straight to dim_area without a separate crosswalk.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>xwalk_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>tambon_code</code></td><td>varchar(20)</td><td>no</td><td>original TIS-1099 subdistrict code, pre-2019-split</td></tr>
+<tr><td><code>tambon_th</code></td><td>varchar(255)</td><td>no</td><td></td></tr>
+<tr><td><code>tambon_en</code></td><td>varchar(255)</td><td>yes</td><td></td></tr>
+<tr><td><code>amphoe_code</code></td><td>varchar(20)</td><td>no</td><td></td></tr>
+<tr><td><code>amphoe_th</code></td><td>varchar(150)</td><td>no</td><td></td></tr>
+<tr><td><code>postal_code</code></td><td>varchar(10)</td><td>yes</td><td></td></tr>
+<tr><td><code>adm3_pcode</code></td><td>varchar(20)</td><td>no</td><td>= 'TH' || tambon_code -- the exact key thailand-adm3-polygons-v1.0.0.geojson uses</td></tr>
+<tr><td><code>unit_code</code></td><td>varchar(20)</td><td>no</td><td>FK to dim_area.unit_code -- the merged catchment unit this tambon belongs to</td></tr>
+<tr><td><code>is_split</code></td><td>tinyint(1)</td><td>no</td><td>1 for a post-2019 khwaeng split sibling (tambon_code != unit_code)</td></tr>
 </table>
 <h3 class="table-title">gold.dim_facility <span class="rowcount">1 rows</span></h3>
 <p class="table-desc">Hospital/facility dimension (kmch-ml input-parity gap 3). Always contains at least the fixed KMCH coordinate (destination_id='KMCH') regardless of whether OSM facility discovery has landed anything.</p>
@@ -501,6 +767,19 @@ table.checklist td:first-child { width: 28px; text-align: center; }
 <tr><td><code>lat</code></td><td>decimal(10,6)</td><td>no</td><td></td></tr>
 <tr><td><code>lon</code></td><td>decimal(10,6)</td><td>no</td><td></td></tr>
 <tr><td><code>is_kmch</code></td><td>tinyint(1)</td><td>no</td><td></td></tr>
+</table>
+<h3 class="table-title">gold.dim_industry_division <span class="rowcount">34 rows</span></h3>
+<p class="table-desc">TSIC 2009 2-digit division code -> English name (kmch-ml input-parity gap 3). A fixed, static, seeded reference list (34 divisions, scoped to those actually observed in the DIW factory registry's 3 catchment provinces), not ingested from any source.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>division_code</code></td><td>char(2)</td><td>no</td><td></td></tr>
+<tr><td><code>division_name_en</code></td><td>varchar(255)</td><td>no</td><td></td></tr>
+</table>
+<h3 class="table-title">gold.dim_bma_zone <span class="rowcount">10 rows</span></h3>
+<p class="table-desc">BMA's own 10-zone grouping (kmch-ml input-parity gap 2, file-based). A different grain than dim_geography/dim_area -- a zone covers several districts, hence bridge_bma_zone_district rather than a geo_key column here.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>zone_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>zone_id</code></td><td>tinyint</td><td>no</td><td>BMA's own 1-10 zone numbering</td></tr>
+<tr><td><code>zone_name_th</code></td><td>varchar(50)</td><td>no</td><td>"พื้นที่ N"</td></tr>
 </table>
 <h3 class="table-title">gold.fact_income <span class="rowcount">15,400 rows</span></h3>
 <p class="table-desc">NSO income fact, resolved to dim_geography (province) and dim_date.</p>
@@ -520,6 +799,7 @@ table.checklist td:first-child { width: 28px; text-align: center; }
 <table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
 <tr><td><code>fact_id</code></td><td>bigint</td><td>no</td><td></td></tr>
 <tr><td><code>geo_key</code></td><td>int unsigned</td><td>no</td><td>resolved at amphoe/district grain where available, else province</td></tr>
+<tr><td><code>area_key</code></td><td>int unsigned</td><td>yes</td><td>kmch-ml input-parity gap 3 -- subdistrict/dim_area grain, resolved via (amphoe,tambon) name match against dim_tambon_unit_xwalk; NULL where unmatched</td></tr>
 <tr><td><code>industry_key</code></td><td>int unsigned</td><td>yes</td><td></td></tr>
 <tr><td><code>reg_no</code></td><td>varchar(100)</td><td>no</td><td></td></tr>
 <tr><td><code>factory_name</code></td><td>varchar(500)</td><td>yes</td><td></td></tr>
@@ -584,7 +864,7 @@ table.checklist td:first-child { width: 28px; text-align: center; }
 <tr><td><code>metric_variant</code></td><td>varchar(10)</td><td>no</td><td>m | y | z | zy -- exact meaning not documented by HDC, carried as-is</td></tr>
 <tr><td><code>metric_value</code></td><td>decimal(18,2)</td><td>yes</td><td></td></tr>
 </table>
-<h3 class="table-title">gold.fact_hospital_access <span class="rowcount">317 rows</span></h3>
+<h3 class="table-title">gold.fact_hospital_access <span class="rowcount">312 rows</span></h3>
 <p class="table-desc">Raw unit-to-facility travel matrix (kmch-ml input-parity gap 3) -- duration/distance only, explicitly excludes kmch-ml's derived accessibility scores (Huff share, E2SFCA), which are analytical modeling out of scope here. Verified: road distance consistently exceeds straight-line distance as expected; closest units by straight-line also show shortest drive times.</p>
 <table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
 <tr><td><code>fact_id</code></td><td>bigint</td><td>no</td><td></td></tr>
@@ -592,6 +872,65 @@ table.checklist td:first-child { width: 28px; text-align: center; }
 <tr><td><code>facility_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
 <tr><td><code>duration_s</code></td><td>decimal(12,2)</td><td>yes</td><td></td></tr>
 <tr><td><code>distance_m</code></td><td>decimal(14,2)</td><td>yes</td><td></td></tr>
+</table>
+<h3 class="table-title">gold.fact_population_by_area <span class="rowcount">2,808 rows</span></h3>
+<p class="table-desc">DOPA population by unit and year (kmch-ml input-parity gap 1, the previously-deferred "DOPA population" gap, now built from files supplied directly -- see docs/06_kmch_ml_gap_closure_plan.md Gap 1). Grain: (unit, year). data_source='full' rows carry fine/coarse age-sex bands; 'total_only' rows (the Samut Prakan/Chachoengsao 2560-2564 backfill) carry pop_total only. Verified against source files row-for-row (e.g. unit 100101/2560 and unit 110101/2560 match exactly).</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>fact_id</code></td><td>bigint unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>area_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>date_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>data_source</code></td><td>varchar(20)</td><td>no</td><td>full | total_only</td></tr>
+<tr><td><code>fine_male_0_4</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_female_0_4</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_male_5_9</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_female_5_9</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_male_10_14</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_female_10_14</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_male_15_17</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_female_15_17</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_male_18_22</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_female_18_22</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_male_23_29</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_female_23_29</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_male_30_39</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_female_30_39</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_male_40_49</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_female_40_49</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_male_50_59</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_female_50_59</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_male_60_plus</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>fine_female_60_plus</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>coarse_male_0_14</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>coarse_female_0_14</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>coarse_male_15_59</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>coarse_female_15_59</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>coarse_male_60_plus</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>coarse_female_60_plus</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>pop_male</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>pop_female</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>pop_total</code></td><td>int</td><td>no</td><td></td></tr>
+<tr><td><code>pop_age_known</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>pop_unknown_age</code></td><td>int</td><td>yes</td><td></td></tr>
+</table>
+<h3 class="table-title">gold.bridge_bma_zone_district <span class="rowcount">50 rows</span></h3>
+<p class="table-desc">Many-to-many zone<->district bridge, parsed from the source file's own district-name list (not hardcoded) and matched against dim_geography.district_name. Verified: all 50 zone-district links matched with 0 unmatched names.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>bridge_id</code></td><td>bigint unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>zone_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>district_name</code></td><td>varchar(150)</td><td>no</td><td>as given in the source file, matched against dim_geography.district_name</td></tr>
+<tr><td><code>geo_key</code></td><td>int unsigned</td><td>yes</td><td>resolved dim_geography FK, NULL if the district name did not match</td></tr>
+</table>
+<h3 class="table-title">gold.fact_migrant_worker_permit <span class="rowcount">180 rows</span></h3>
+<p class="table-desc">Migrant worker permits by zone (kmch-ml input-parity gap 2). Single snapshot (2568 BE / 2025 CE), not a time series. nationality NULL = category-level total (bma_migrant_general); nationality-specific rows (4 per category) exist for the 3 categories with a breakdown available. Verified against source file row-for-row, including the nationality-rows-sum-to-category-total internal consistency check.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>fact_id</code></td><td>bigint unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>zone_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>date_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>permit_category</code></td><td>varchar(100)</td><td>no</td><td></td></tr>
+<tr><td><code>nationality</code></td><td>varchar(50)</td><td>yes</td><td>NULL = category-level total, no nationality breakdown available</td></tr>
+<tr><td><code>total</code></td><td>int</td><td>no</td><td></td></tr>
+<tr><td><code>male</code></td><td>int</td><td>no</td><td></td></tr>
+<tr><td><code>female</code></td><td>int</td><td>no</td><td></td></tr>
 </table>
 <h3 class="table-title">gold.agg_economic_by_province_year <span class="rowcount">154 rows</span></h3>
 <p class="table-desc">Feeds Dashboard 2 (Economic & Industrial Development). One row per province x year.</p>
@@ -643,6 +982,38 @@ table.checklist td:first-child { width: 28px; text-align: center; }
 <tr><td><code>socioeconomic_health_vulnerability_index</code></td><td>decimal(6,2)</td><td>yes</td><td>K-STR-01, 0-100, higher = more vulnerable</td></tr>
 <tr><td><code>industrial_health_impact_index</code></td><td>decimal(6,2)</td><td>yes</td><td>K-STR-02, 0-100, higher = more impact</td></tr>
 <tr><td><code>catchment_economic_vitality_score</code></td><td>decimal(6,2)</td><td>yes</td><td>K-STR-03, 0-100, higher = more vitality</td></tr>
+</table>
+<h3 class="table-title">gold.agg_industrial_concentration_by_unit_division <span class="rowcount">2,612 rows</span></h3>
+<p class="table-desc">Industrial location quotient, unit x division grain (kmch-ml input-parity gap 3). Recomputed from fact_factory + dim_industry on every refresh, scoped to TSIC-2009-5-digit-coded factories only. "region" = the whole 3-catchment-province scope, not per-province (confirmed against kmch-ml's own export: region_share_workers for a division is identical across all 3 provinces). Verified: lq_workers/lq_factories match kmch-ml's reference export to within expected DIW-snapshot drift; industrial_concentration is a best-effort approximation of their own flag (not exact parity -- their precise rule looks like a statistical significance test, not a flat threshold).</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>agg_id</code></td><td>bigint unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>area_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>division_code</code></td><td>char(2)</td><td>no</td><td></td></tr>
+<tr><td><code>n_factories</code></td><td>int</td><td>no</td><td>factories in this unit x division, TSIC-2009-5-digit-coded only</td></tr>
+<tr><td><code>workers</code></td><td>int</td><td>no</td><td></td></tr>
+<tr><td><code>unit_factories</code></td><td>int</td><td>no</td><td>total TSIC-2009-5-digit-coded factories in this unit, all divisions</td></tr>
+<tr><td><code>unit_workers</code></td><td>int</td><td>no</td><td></td></tr>
+<tr><td><code>share_of_unit_workers</code></td><td>decimal(10,6)</td><td>yes</td><td></td></tr>
+<tr><td><code>region_share_workers</code></td><td>decimal(10,6)</td><td>yes</td><td>this division's share of workers across the whole 3-province catchment, not per-province</td></tr>
+<tr><td><code>lq_workers</code></td><td>decimal(12,4)</td><td>yes</td><td></td></tr>
+<tr><td><code>lq_factories</code></td><td>decimal(12,4)</td><td>yes</td><td></td></tr>
+<tr><td><code>small_n</code></td><td>tinyint(1)</td><td>no</td><td>n_factories < 3</td></tr>
+<tr><td><code>industrial_concentration</code></td><td>tinyint(1)</td><td>no</td><td>best-effort approximation, see file header note -- not exact parity with kmch-ml's own flag</td></tr>
+</table>
+<h3 class="table-title">gold.agg_industrial_concentration_by_unit <span class="rowcount">281 rows</span></h3>
+<p class="table-desc">Industrial concentration summary, unit grain (kmch-ml input-parity gap 3) -- top division, its LQ, and a concentration flag per unit. factories_registered/workers_registered are ALL factories regardless of TSIC classification; factories_tsic2009_5digit is the classified subset the LQ figures are based on.</p>
+<table class="cols"><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr>
+<tr><td><code>agg_id</code></td><td>bigint unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>area_key</code></td><td>int unsigned</td><td>no</td><td></td></tr>
+<tr><td><code>factories_registered</code></td><td>int</td><td>no</td><td>ALL factories in this unit, regardless of TSIC classification</td></tr>
+<tr><td><code>workers_registered</code></td><td>int</td><td>no</td><td></td></tr>
+<tr><td><code>factories_tsic2009_5digit</code></td><td>int</td><td>no</td><td>subset with a proper TSIC-2009 5-digit code -- the base for every LQ figure here</td></tr>
+<tr><td><code>share_workers_not_classified</code></td><td>decimal(10,6)</td><td>yes</td><td>transparency metric only, not used in the LQ calc itself</td></tr>
+<tr><td><code>top_division_code</code></td><td>char(2)</td><td>yes</td><td></td></tr>
+<tr><td><code>top_division_workers</code></td><td>int</td><td>yes</td><td></td></tr>
+<tr><td><code>top_division_lq</code></td><td>decimal(12,4)</td><td>yes</td><td></td></tr>
+<tr><td><code>n_concentrated_divisions</code></td><td>int</td><td>no</td><td>count of divisions in this unit flagged industrial_concentration=1</td></tr>
+<tr><td><code>industrial_concentration</code></td><td>tinyint(1)</td><td>no</td><td>1 if any division in this unit is flagged concentrated</td></tr>
 </table></div>
 <footer class="page">clinical-dwh documentation &middot; see docs/03_external_reference_sources.md for full provenance notes</footer>
 </body></html>

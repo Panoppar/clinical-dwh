@@ -1,15 +1,72 @@
 # External Reference Data — Provenance & Scope
 
-**As of 2026-10-26, this warehouse is built entirely from 5 live Thai
-government APIs** (NSO, BMA, DIW, DDS, HDC) — see below. An earlier phase
-of this project built a much larger Bronze/Silver/Gold pipeline from a
-shared Drive folder of static files (DOPA population, HDC/DDS manual
+## Source inventory (2026-10-27) — by origin type
+
+**11 distinct sources, 2 origin types.** Every source lands through the
+same SeaweedFS landing zone (versioned, content-hashed) regardless of
+type — the only difference is *how* bytes get there: an HTTP call this
+pipeline makes itself ("Live API"), or a file supplied directly and
+bind-mounted at `external-inputs/` ("File-based"). Both are first-class,
+not a tiered hierarchy — file-based sources exist because the data isn't
+available any other way (a one-time government publication, a GitHub
+repo's community-maintained reference list), not because they're a
+fallback.
+
+### Live API (8 sources — HTTP call on every pipeline run)
+
+| # | Source | Endpoint | Status | Bronze table(s) | Verified rows |
+|---|---|---|---|---|---|
+| 1 | NSO household income | `catalogapi.nso.go.th` | ✅ Working (WAF needs a browser-like User-Agent) | `api_nso_income` | 15,400 |
+| 2 | BMA community registry | `data.bangkok.go.th` (CKAN) | ✅ Working | `api_bma_community` | 6,027 |
+| 3 | DIW factory registry | `userdb.diw.go.th` | ✅ Working | `api_diw_factory` | 13,683 |
+| 4 | HDC health-status reports | `api-hdc.moph.go.th` / `api-center-hdc.moph.go.th` | ✅ Working | `api_hdc_report_catalog`, `api_hdc_observations` | 116 + 163,233 |
+| 5 | Thailand admin-boundary reference | `raw.githubusercontent.com` (`DevelopedbyWill/thailand-canonical-admin-names`) | ✅ Working | `geo_boundary_subdistrict`, `geo_boundary_district`, `geo_boundary_polygon` | 7,436 + 928 + 7,425 |
+| 6 | OSRM road routing | `router.project-osrm.org` | ✅ Working | `geo_travel_matrix` | 312 |
+| 7 | DDS disease ranking | `doe.moph.go.th/dds-report` | ❌ Blocked — confirmed server-side (missing PostgreSQL driver on DDS's own backend since 2026-10-25), not this code | `api_dds_disease_ranking` | 0 |
+| 8 | OSM hospital facilities (Overpass) | `overpass-api.de` | ❌ Blocked — confirmed network-level (HTTP 406 from both the container and the host directly), not this code | `geo_hospital_facility` | 0 |
+
+### File-based (3 sources — a supplied file, not an HTTP call this pipeline makes)
+
+| # | Source | Original file | Bronze table(s) | Verified rows |
+|---|---|---|---|---|
+| 9 | Tambon↔unit crosswalk | `xwalk_tambon_unit.csv` | `tambon_xwalk` | 323 |
+| 10 | DOPA population by area/year | `dim_population_year.csv` + `pop_total_supplement_2560_2564.csv` | `dopa_population_year`, `dopa_population_supplement` | 2,093 + 715 |
+| 11 | BMA migrant worker permits | `ข้อมูลแรงงานต่างด้าว.xlsx` (2568 BE snapshot) | `bma_migrant_general`, `bma_migrant_mou_import`, `bma_migrant_renewal`, `bma_migrant_illegal` | 11 × 4 |
+
+**Why these 3 are file-based, not live**: none of them are available via
+any API. The crosswalk and population data are specific, one-time exports
+from kmch-ml's own prior work and DOPA's published stats respectively, not
+publications with a stable fetchable endpoint; the migrant-worker data is
+a single dated snapshot publication (titled "...2568"), not a queryable
+API. Each is a **deliberate, scoped exception** to this project's
+live-API-first default — not a reversion to the older, larger file-based
+architecture an earlier phase of this project removed entirely (see the
+historical note below). All 3 are bind-mounted read-only at
+`external-inputs/` (`docker-compose.yml`), the same pattern `sql/` already
+uses — updating any of them later needs no image rebuild.
+
+**Totals**: 6 of 8 live-API sources are currently reachable; both blocked
+ones are confirmed external, not a defect here, and the pipeline's
+`run_live_source()` wrapper ensures one source's outage never blocks any
+other source's refresh. All 3 file-based sources are fully loaded.
+
+---
+
+## Historical note: this project's scope was reduced once already
+
+As of 2026-10-26, this warehouse was rebuilt from scratch around 5 live
+Thai government APIs (NSO, BMA, DIW, DDS, HDC) — see below. An earlier
+phase of this project built a much larger Bronze/Silver/Gold pipeline from
+a shared Drive folder of static files (DOPA population, HDC/DDS manual
 exports, Lat Krabang, KMCH, factory lists, and more) plus a short-lived
 clinic/patient OLTP source. All of that — every non-API Bronze/Silver
 table, the entire Gold layer, the raw input files, and the docs describing
 them — was removed on explicit instruction to keep the warehouse scoped
 to the 5 live-API sources only. This file's history of that earlier phase
-was trimmed along with it; only the live-API work remains documented below.
+was trimmed along with it; only the live-API work remained documented
+below at that time. The file-based sources added back on 2026-10-27
+(table above) are a separate, deliberate decision for specific,
+well-understood gaps — not an undoing of that original reduction.
 
 ## Live-API Bronze sources, landed via SeaweedFS (2026-10-25/26)
 
@@ -78,28 +135,98 @@ live `warehouse-db` (97 explicit `DROP TABLE` statements for bronze/silver,
 plus the entire `gold` schema dropped and recreated empty). `README.md`
 was rewritten to describe the reduced, API-only scope.
 
-## kmch-ml input-parity extension (2026-10-26)
+## kmch-ml input-parity extension (2026-10-26, extended 2026-10-27)
 
 Additive ingestion only — no existing Gold table/column renamed, dropped,
 or redefined (verified against `information_schema` before and after).
-Closes 3 of the 4 gaps between this warehouse's input surface and what
-kmch-ml's analysis pipeline needs; DOPA population (gap 4 in the planning
-doc) stays a documented gap, not built, pending separate project-owner
-sign-off, per explicit instruction.
+Originally closed 3 of the 4 gaps between this warehouse's input surface
+and what kmch-ml's analysis pipeline needs; DOPA population (gap 4 in the
+planning doc) was deferred pending project-owner sign-off. That sign-off
+arrived 2026-10-27 along with the actual source files, closing the 4th gap
+— see `docs/06_kmch_ml_gap_closure_plan.md` for the full gap-by-gap plan
+and status (this file and that one now cover overlapping ground; this
+section stays as the provenance record, that doc as the working plan).
+
+- **`fact_population_by_area`** (DOPA population by unit/year, closes the
+  previously-deferred gap 4): file-based, not a live API — a deliberate,
+  scoped exception, same pattern as `bronze.tambon_xwalk`. Built from two
+  files: `dim_population_year.csv` (fine 5-yr + coarse age-sex bands, 9
+  years 2560-2568 BE, already at `dim_area`'s 312-unit merged grain — no
+  split-tambon codes present) and `pop_total_supplement_2560_2564.csv`
+  (`pop_total` only, 5 years 2560-2564, Samut Prakan/Chachoengsao only).
+  Confirmed before building: the two files share **zero** overlapping
+  `(unit_code, year_be)` pairs — the supplement is a clean backfill for a
+  real gap in the main file (every Samut Prakan/Chachoengsao unit has
+  exactly 4 years, 2565-2568, in the main file; Bangkok units have the
+  full 9), not a conflicting or redundant source. 2,808 rows total
+  (2,093 `full` + 715 `total_only`), verified against both source files
+  row-for-row (e.g. unit 100101/2560 and unit 110101/2560 match exactly).
+  Also required extending `dim_date` from 5 years (2022-2026) to 10
+  (2017-2026) to cover this data's full range.
+
+- **`fact_factory.area_key` + `dim_industry_division` +
+  `agg_industrial_concentration_by_unit(_division)`** (industrial
+  location quotient, kmch-ml input-parity gap 3): `area_key` is additive
+  to the existing `fact_factory` table, resolved via `(amphoe,tambon)`
+  text match against `dim_tambon_unit_xwalk` (97.4% resolved, 13,331 of
+  13,683 factories). Methodology reverse-engineered from kmch-ml's own
+  reference export before writing any code: LQ is scoped to
+  TSIC-2009-5-digit-coded factories only (DIW's legacy/short-coded
+  factories excluded), and "region" is confirmed to mean the whole
+  3-catchment-province scope, not per-province. Recomputed from
+  `fact_factory` on every refresh, not loaded as a static copy of
+  kmch-ml's snapshot — verified to match their reference values to within
+  the drift expected from a newer DIW crawl. `industrial_concentration`
+  is a documented best-effort approximation of kmch-ml's own flag
+  (~91% agreement) — their exact rule could not be fully
+  reverse-engineered from the data alone.
+
+- **`dim_bma_zone` / `bridge_bma_zone_district` /
+  `fact_migrant_worker_permit`** (migrant worker permits, kmch-ml
+  input-parity gap 2): file-based (BMA/Dept. of Employment publication,
+  2568 BE single snapshot), not a live API. The source is a wide,
+  multi-section pivot (4 stacked tables in one sheet) — shredded as 4
+  separate Bronze tables matching the file's own section boundaries, not
+  normalized until Silver. Verified before building: every section's
+  grand-total row exactly equals the sum of its 10 zone rows, in every
+  column, confirming `"-"` means literal zero (it coexists row-by-row
+  with real nonzero numbers for other nationalities in the same row) —
+  and cross-section: 3 of `bma_migrant_general`'s 6 categories have their
+  exact totals reproduced by summing the corresponding nationality-level
+  section. BMA's own 10-zone grouping is a different grain than
+  `dim_geography`/`dim_area` (a zone covers several districts), so the
+  zone↔district mapping is a many-to-many bridge table, parsed from the
+  source file's own district-name list — all 50 links matched against
+  `dim_geography.district_name` with zero unmatched.
 
 - **`dim_area`** (catchment-area dimension): built from
   `DevelopedbyWill/thailand-canonical-admin-names` (GitHub, public, CC BY
   4.0 — fetched independently, not read from kmch-ml's own repo).
-  317 units across the 3 catchment provinces (Bangkok/Samut Prakan/
-  Chachoengsao) — close to but not identical to kmch-ml's own documented
-  312, most likely snapshot-date drift in the same shared public dataset
-  since kmch-ml last built it (internally consistent: both pulls agree on
-  323 current Bangkok/Samut Prakan/Chachoengsao tambon). Bangkok's 13
-  post-2019 khwaeng splits (no centroid in this snapshot) fall back to
-  their 7 parent districts, same handling kmch-ml uses, flagged via
-  `is_district_level_fallback` rather than hidden. Distance/catchment-tier
-  verified against the hospital's own district (ลาดกระบัง) correctly
-  landing as the closest, "core"-tier unit.
+  **Correction (2026-10-27):** an earlier build of this table had 317
+  units, attributed at the time to "snapshot-date drift" against kmch-ml's
+  documented 312 — that explanation was wrong. The real cause was a bug:
+  this table's original fallback-grouping logic only merged a tambon into
+  its parent when that tambon's *own* centroid was `NULL`, so 5 of the 7
+  Bangkok post-2019 khwaeng-split groups had one sibling (with a valid
+  centroid) wrongly left standing as its own independent unit instead of
+  merged with the other. Fixed by grouping against
+  `xwalk_tambon_unit.csv` (kmch-ml's own authoritative tambon-to-unit
+  mapping, landed as `bronze.tambon_xwalk` — see
+  `docs/06_kmch_ml_gap_closure_plan.md`, Gap 4) instead of the centroid
+  heuristic. Now **312 units**, exactly matching kmch-ml's documented
+  total, with the 7 merge groups verified identical to kmch-ml's reference
+  export (unit_code, name, member tambons, and catchment_tier all match
+  row-for-row). Bangkok's 13 post-2019 khwaeng splits merge into their 7
+  pre-2019-split parent tambons (not parent *districts*, the earlier wrong
+  description) — `is_district_level_fallback` is kept as the column name
+  for backward compatibility but now means "this unit represents a merged
+  pre-split group," not literally district-grain. Distance/catchment-tier
+  verified against the hospital's own subdistrict (ลาดกระบัง) correctly
+  landing as the closest, "core"-tier unit; point-in-polygon ground truth
+  additionally confirms unit 101104 (ลำปลาทิว) — not 101101/ลาดกระบัง,
+  which is merely closest by distance — is the one unit that physically
+  contains the hospital's coordinate, matching kmch-ml's own reference
+  file exactly.
 - **`fact_hdc_weekly_observation`** (4 PM2.5-linked weekly disease
   reports): turned out to need *zero* Bronze/Silver changes — these 4
   report codes were already being discovered by the existing HDC
@@ -120,8 +247,9 @@ sign-off, per explicit instruction.
   reachable. `ingest_api_osrm.py` (public demo server,
   `router.project-osrm.org`, confirmed working) does not hard-depend on
   OSM succeeding — it always computes the travel matrix from every
-  `dim_area` unit to the fixed KMCH coordinate, verified: all 317 units
-  resolved, road distance consistently exceeds straight-line distance as
+  `dim_area` unit to the fixed KMCH coordinate, verified: all 312 units
+  resolved (re-run 2026-10-27 against the corrected `dim_area`, see
+  above), road distance consistently exceeds straight-line distance as
   expected, closest units by straight-line also show the shortest drive
   times. Raw matrix only — no Huff-share/E2SFCA accessibility scoring,
   which is analytical modeling out of scope for this ingestion work.

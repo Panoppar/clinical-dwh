@@ -66,16 +66,22 @@ table.checklist td:first-child { width: 28px; text-align: center; }
 </div></header>
 <div class="wrap">
 <nav class="toc"><strong>Jump to:</strong> <a href="#prereq">Prerequisites</a><a href="#firstrun">First Deploy</a>
-<a href="#verify">Verify</a><a href="#metabase">Metabase Bootstrap</a><a href="#day2">Day-2 Ops</a>
-<a href="#troubleshooting">Troubleshooting</a><a href="#reset">Reset</a></nav>
+<a href="#verify">Verify</a><a href="#metabase">Metabase Bootstrap</a><a href="#production">Production (VM)</a>
+<a href="#day2">Day-2 Ops</a><a href="#troubleshooting">Troubleshooting</a><a href="#reset">Reset</a></nav>
 
 <h2 class="section gold" id="prereq">Prerequisites</h2>
 <ul>
-<li>Docker Desktop with Compose v2</li>
-<li>Outbound internet access to 5 government API hosts (NSO, BMA, DIW, DDS, HDC) and GitHub (if re-fetching
-anything) — this pipeline has no offline mode</li>
-<li>Python 3 with <code>openpyxl</code> only if regenerating <code>Excel\KPI_Tree_and_Dashboard_Design.xlsx</code>
-or these docs</li>
+<li>Docker Engine with Compose v2 (Docker Desktop for local dev; plain <code>docker</code> + the
+<code>docker-compose-plugin</code> package for a Linux VM -- see <a href="#production">Production (VM)</a>)</li>
+<li>Outbound internet access to 6 live hosts (NSO, BMA, DIW, HDC, GitHub for the admin-boundary reference data,
+<code>router.project-osrm.org</code>) plus 2 that are currently blocked at the source, not this code (DDS,
+Overpass/OSM -- see Troubleshooting) — this pipeline has no offline mode</li>
+<li>A local copy of the 4 file-based inputs under <code>external-inputs/</code> (tambon crosswalk, DOPA
+population x2, BMA migrant worker permits) -- these are bind-mounted, not baked into the image, so updating any
+of them later needs no rebuild</li>
+<li>Python 3 with <code>pymysql</code> on the host only if regenerating these docs directly (dumps
+<code>information_schema</code> to <code>%TEMP%</code>, see Day-2 Ops), or <code>openpyxl</code> if
+regenerating <code>Excel\KPI_Tree_and_Dashboard_Design.xlsx</code></li>
 </ul>
 
 <h2 class="section gold" id="firstrun">First-Time Deploy</h2>
@@ -98,14 +104,16 @@ correct yet.</p></li>
 <li><h4>Build and run the pipeline</h4>
 <pre><code>docker compose build elt-runner
 docker compose run --rm elt-runner</code></pre>
-<p class="table-desc">One-shot batch job. Ingests all 5 sources (DIW's amphoe crawl takes ~70s; HDC's full
-report crawl takes ~15-20 min at its 0.6s throttle -- this is the long pole of a first deploy), shreds to
-Bronze, cleanses to Silver, builds Gold. A source that's down (see DDS, below) logs a warning and the run
-continues -- it will NOT abort the whole deploy.</p></li>
+<p class="table-desc">One-shot batch job, full Bronze -&gt; Silver -&gt; Gold refresh every time (idempotent). Ingests
+all 8 live-API sources (DIW's amphoe crawl takes ~70s; HDC's full 119-report crawl is the long pole, typically
+10-20 min at its throttled rate -- watch for <code>[ingest_api_hdc] (N/119)...</code> advancing, this is normal,
+not a hang) and the 3 file-based sources. A source that's down (DDS, OSM -- both confirmed blocked at the
+source, not this code, see Troubleshooting) logs a warning and the run continues -- it will NOT abort the whole
+deploy.</p></li>
 </ol>
 
 <h2 class="section gold" id="verify">Verify the Deploy</h2>
-<p>The pipeline prints a row-count summary on success. Expected figures (2026-10-26 baseline; BMA/HDC will grow
+<p>The pipeline prints a row-count summary on success. Expected figures (2026-10-27 baseline; BMA/HDC will grow
 as those sources publish new fiscal years/reports):</p>
 <table class="cols checklist">
 <tr><th></th><th>Table</th><th>Expected rows</th></tr>
@@ -113,8 +121,13 @@ as those sources publish new fiscal years/reports):</p>
 <tr><td>&check;</td><td><code>bronze.api_bma_community</code></td><td>6,027</td></tr>
 <tr><td>&check;</td><td><code>bronze.api_diw_factory</code></td><td>13,683</td></tr>
 <tr><td>&#9888;</td><td><code>bronze.api_dds_disease_ranking</code></td><td>0 -- expected while DDS's backend is down (see Troubleshooting)</td></tr>
-<tr><td>&check;</td><td><code>bronze.api_hdc_observations</code></td><td>163,219</td></tr>
+<tr><td>&check;</td><td><code>bronze.api_hdc_observations</code></td><td>163,233</td></tr>
+<tr><td>&#9888;</td><td><code>bronze.geo_hospital_facility</code></td><td>0 -- expected while Overpass/OSM is blocked (see Troubleshooting)</td></tr>
 <tr><td>&check;</td><td><code>gold.dim_geography</code></td><td>451 (77 provinces + 67 districts + 307 subdistricts)</td></tr>
+<tr><td>&check;</td><td><code>gold.dim_area</code></td><td>312 catchment units (exact match to kmch-ml's own documented total)</td></tr>
+<tr><td>&check;</td><td><code>gold.fact_factory</code></td><td>13,683 (~97% with <code>area_key</code> resolved)</td></tr>
+<tr><td>&check;</td><td><code>gold.fact_population_by_area</code></td><td>2,808</td></tr>
+<tr><td>&check;</td><td><code>gold.fact_migrant_worker_permit</code></td><td>180</td></tr>
 <tr><td>&check;</td><td><code>gold.obt_regional_composite_index</code></td><td>154 (province x year combinations)</td></tr>
 </table>
 <p>Spot-check manually if any number looks off:</p>
@@ -158,6 +171,110 @@ table shows <code>"initial_sync_status":"complete"</code>.</p>
 instance) is added automatically during setup. Remove it for a clean workspace:
 <code>DELETE /api/database/1</code> with the admin session header.</div>
 
+<h2 class="section gold" id="production">Production Deployment (VM)</h2>
+<p>Everything above works unchanged on a VM -- Docker Compose doesn't care whether it's running on a laptop or a
+server. The differences below are what actually matters once the warehouse is reachable over a network instead
+of just <code>localhost</code>, and left running unattended for weeks instead of a dev session.</p>
+
+<h4>Sizing (baseline, not a hard minimum)</h4>
+<ul>
+<li><strong>2 vCPU / 4GB RAM</strong> comfortably runs the 3 persistent services (MySQL, SeaweedFS, Metabase)
+idle; the <code>elt-runner</code> batch job is CPU-light (mostly waiting on throttled HTTP requests) so it
+doesn't need dedicated headroom, just enough to not starve the other 3 while it runs.</li>
+<li><strong>20GB disk</strong> minimum. Current data footprint is small (38+ Bronze/Silver/Gold tables, largest
+at ~163K rows) -- the landing zone is the one that grows over time, though content-addressed dedup means a
+source that returns unchanged bytes on every re-run (the common case) adds nothing. Budget more if re-running
+frequently against sources that change often (HDC's own data updates faster than the others).</li>
+</ul>
+
+<h4>OS and Docker install</h4>
+<p class="table-desc">Docker Desktop is a dev-machine product -- a VM runs plain Docker Engine + the Compose v2
+plugin instead (Ubuntu Server LTS is a reasonable default target):</p>
+<pre><code># Ubuntu/Debian -- see docs.docker.com for other distros
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker $USER   # log out/in once for this to take effect
+docker compose version          # confirms the v2 plugin, not the old standalone docker-compose</code></pre>
+
+<h4>Docker log limits -- already configured, verify it took effect</h4>
+<p class="table-desc">Every service in <code>docker-compose.yml</code> caps its own json-file log via a shared
+<code>x-logging</code> anchor (<code>max-size: 3m</code>, <code>max-file: 2</code> -- 6MB worst case per
+service). Docker's own default has <strong>no cap at all</strong>, so this matters most on a VM where disk is
+finite and nobody's watching interactively. Confirm it's actually applied after bringing services up:</p>
+<pre><code>docker inspect cdw-warehouse-db --format '{{json .HostConfig.LogConfig}}'
+# expect: {"Type":"json-file","Config":{"max-file":"2","max-size":"3m"}}</code></pre>
+<div class="callout warn">This caps <em>container</em> logs only. It does not cap the 3 data volumes
+(<code>warehouse_db_data</code>, <code>metabase_data</code>, <code>landing_zone_data</code>) -- those grow with
+real data, by design, and are what Day-2 backups below protect.</div>
+
+<h4>Persist across reboots</h4>
+<p class="table-desc"><code>warehouse-db</code>, <code>landing-zone</code>, and <code>metabase</code> already
+have <code>restart: unless-stopped</code> -- Docker itself restarts them after a host reboot, as long as the
+Docker daemon is enabled to start on boot (<code>get.docker.com</code>'s installer does this automatically;
+confirm with <code>systemctl is-enabled docker</code>). <code>elt-runner</code> intentionally has no restart
+policy -- it's a one-shot batch job, not a daemon; scheduling re-runs is a cron concern, below.</p>
+
+<h4>Schedule periodic pipeline runs</h4>
+<p class="table-desc">There's no built-in scheduler -- a VM deployment that wants fresh data without someone
+running the command by hand needs a cron entry:</p>
+<pre><code># /etc/cron.d/clinical-dwh-pipeline -- daily at 02:00 local time
+0 2 * * * root cd /opt/clinical-dwh && docker compose run --rm elt-runner >> /var/log/clinical-dwh-pipeline.log 2>&1</code></pre>
+<div class="callout warn">Redirecting cron's own output to a plain log file sidesteps the container log cap above
+-- rotate that file too (<code>logrotate</code>, or just redirect to <code>docker compose run --rm elt-runner
+2>&amp;1 | tail -n 1000 > /var/log/clinical-dwh-pipeline.log</code> to keep only the latest run).</div>
+
+<h4>Network exposure</h4>
+<p class="table-desc">By default every port in <code>docker-compose.yml</code> binds to all interfaces
+(<code>0.0.0.0</code>) -- fine on a laptop behind a home router, not fine on a VM with a public IP.</p>
+<ul>
+<li><strong>Metabase (3000)</strong> is the only service end users need. If exposing it beyond the VM's own
+internal network, put a reverse proxy in front for TLS (Caddy or nginx with Let's Encrypt) rather than exposing
+Metabase's own HTTP port directly -- it has no TLS of its own.</li>
+<li><strong>warehouse-db (3306) and landing-zone (8333/8888) should not be internet-facing.</strong> Change
+their host-port bindings in <code>docker-compose.yml</code> from <code>"${PORT}:3306"</code> to
+<code>"127.0.0.1:${PORT}:3306"</code> (same pattern for the other two) so they're reachable from the VM itself
+and anything in the same Docker network, but not from outside -- nothing external needs direct DB or landing-zone
+access; Metabase already reaches warehouse-db over the internal <code>cdw-net</code> bridge network regardless.</li>
+<li>If a cloud firewall/security-group is available at the VM level, use it as the primary control -- only open
+22 (SSH) and whichever port fronts Metabase (443 if behind a reverse proxy, 3000 if not).</li>
+</ul>
+
+<h4>Secrets</h4>
+<ul>
+<li><strong>Change every <code>ChangeMe_*</code> password in <code>.env</code> and
+<code>seaweedfs_s3_config.json</code> before this VM is reachable by anyone else</strong> -- the defaults in
+this repo are placeholders, not production credentials.</li>
+<li><code>chmod 600 .env seaweedfs_s3_config.json</code> -- both contain plaintext credentials; restrict to the
+deploying user.</li>
+<li>Neither file belongs in version control -- confirm both are gitignored before pushing this VM's working
+copy anywhere.</li>
+</ul>
+
+<h4>Backups</h4>
+<p class="table-desc">The 3 named volumes are the entire state of the warehouse. A logical MySQL dump is more
+portable and consistent than a raw volume copy for the database specifically:</p>
+<pre><code># Database -- logical dump, safe to take while the DB is running
+docker compose exec warehouse-db mysqldump --default-character-set=utf8mb4 -u root -p --all-databases \
+  > backup_$(date +%Y%m%d).sql
+
+# Metabase + landing zone -- raw volume archives (stop the service first for a consistent snapshot,
+# or accept a small risk of an in-flight write on a running one)
+docker run --rm -v clinical-dwh_metabase_data:/data -v $(pwd):/backup alpine \
+  tar czf /backup/metabase_$(date +%Y%m%d).tar.gz -C /data .
+docker run --rm -v clinical-dwh_landing_zone_data:/data -v $(pwd):/backup alpine \
+  tar czf /backup/landingzone_$(date +%Y%m%d).tar.gz -C /data .</code></pre>
+<div class="callout">The landing zone is re-derivable by re-running the pipeline against live sources (except
+DDS/OSM while those remain blocked, and the 4 file-based inputs, which only exist wherever
+<code>external-inputs/</code> is kept outside the container) -- lower backup priority than the database itself,
+whose Gold layer took real compute (HDC's throttled crawl, OSRM's tiled routing) to rebuild from scratch.</div>
+
+<h4>Disk monitoring</h4>
+<pre><code>docker system df            # image/container/volume disk usage at a glance
+df -h /var/lib/docker        # or wherever Docker's data-root actually lives on this VM</code></pre>
+<div class="callout warn"><code>docker system prune</code> removes stopped containers, unused networks, and
+dangling images -- safe in general, but never run <code>-a</code> or <code>--volumes</code> without reading what
+it would remove first; <code>--volumes</code> can delete the named volumes this warehouse's entire state lives
+in if they're not currently attached to a running container.</div>
+
 <h2 class="section gold" id="day2">Day-2 Operations</h2>
 <ul>
 <li><strong>Re-run the pipeline</strong> any time: <code>docker compose run --rm elt-runner</code>. Idempotent --
@@ -187,6 +304,13 @@ missing its PostgreSQL PHP driver, not fixable from this side. Nothing to do but
 NSO's API blocks the default requests/curl User-Agent. Confirm <code>ingest_api_nso.py</code> still sends
 <code>User-Agent: Mozilla/5.0 kmch-phase3-nso/1.0</code> -- if NSO changes their WAF rules, the fix is a
 different UA string, not a code redesign.</div>
+<div class="callout warn"><strong>OSM facility discovery returns HTTP 406 from every Overpass endpoint.</strong>
+Confirmed by direct testing (both from inside the container and from the host machine directly) that Overpass's
+public instance (<code>overpass-api.de</code>, including its <code>lz4</code> mirror) is blocking this network
+origin -- unrelated to this code. <code>ingest_api_osrm.py</code> does not depend on this succeeding (it always
+computes the travel matrix to the fixed KMCH coordinate regardless), so this only affects
+<code>dim_facility</code> staying at 1 row (KMCH itself). Retry periodically; worth trying a different Overpass
+mirror if this persists.</div>
 <div class="callout"><strong>landing-zone container is "unhealthy".</strong> Its healthcheck accepts any HTTP
 response as healthy (even 403) -- a real failure means the container can't be reached at all. Check
 <code>docker compose logs landing-zone</code>; a common cause is <code>seaweedfs_s3_config.json</code> missing
