@@ -27,4 +27,14 @@ GRANT ALL PRIVILEGES ON gold.*   TO 'dwh_elt'@'%';
 CREATE USER IF NOT EXISTS 'metabase_ro'@'%' IDENTIFIED BY 'ChangeMe_Metabase_Ro_2026!';
 GRANT SELECT ON gold.* TO 'metabase_ro'@'%';
 
+-- ----------------------------------------------------------------------------
+-- kmch-ml service account: SELECT-only, GOLD-only -- same enforcement model
+-- as metabase_ro. This is the account kmch-ml's training pipeline uses to
+-- pull features directly from the warehouse instead of flat-file exports
+-- (the whole point of this project's kmch-ml input-parity work, see
+-- docs/06_kmch_ml_gap_closure_plan.md).
+-- ----------------------------------------------------------------------------
+CREATE USER IF NOT EXISTS 'kmch_ml_ro'@'%' IDENTIFIED BY 'ChangeMe_Kmch_Ml_Ro_2026!';
+GRANT SELECT ON gold.* TO 'kmch_ml_ro'@'%';
+
 FLUSH PRIVILEGES;
