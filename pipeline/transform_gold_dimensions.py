@@ -533,21 +533,22 @@ def _build_dim_facility(silver_conn, gold_conn):
 
 
 def _build_dim_bma_zone(bronze_conn, gold_conn):
-    """kmch-ml input-parity gap 2. Reads zone_id + the district-name list
-    straight from bronze.bma_migrant_general (not hardcoded) -- 10 zones,
-    skipping the grand-total row (zone label is empty there)."""
+    """kmch-ml input-parity gap 2. Reads the zone_id -> district-name
+    mapping from bronze.bma_zone_districts (not hardcoded) -- 10 zones.
+    This is static Thai public-administration geography, not permit-count
+    data, so it's sourced independently of whichever source currently
+    provides fact_migrant_worker_permit's counts (see sql/bronze/17's
+    header for why this was split out on 2026-10-28)."""
     with bronze_conn.cursor() as bcur:
-        bcur.execute("SELECT raw_zone_label, raw_zone_districts_or_label FROM bma_migrant_general")
+        bcur.execute("SELECT raw_zone_id, raw_zone_name_th, raw_district_name FROM bma_zone_districts")
         raw_rows = bcur.fetchall()
 
-    zones = []  # (zone_id, zone_label, [district names])
-    for label, districts in raw_rows:
-        label = (label or "").strip()
-        if not label.startswith("พื้นที่"):
-            continue  # grand-total row
-        zone_id = int(label.replace("พื้นที่", "").strip())
-        district_names = [d.strip() for d in (districts or "").split(",") if d.strip()]
-        zones.append((zone_id, label, district_names))
+    zones_by_id = {}  # zone_id -> (zone_label, [district names])
+    for zone_id_raw, label, district in raw_rows:
+        zone_id = int(zone_id_raw)
+        entry = zones_by_id.setdefault(zone_id, (label, []))
+        entry[1].append(district)
+    zones = [(zid, label, districts) for zid, (label, districts) in sorted(zones_by_id.items())]
 
     with gold_conn.cursor() as cur:
         cur.executemany(

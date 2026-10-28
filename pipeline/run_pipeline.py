@@ -53,6 +53,7 @@ BRONZE_SCRIPTS: list[str] = [
     "bronze/13_create_bronze_tambon_xwalk.sql",
     "bronze/14_create_bronze_dopa_population.sql",
     "bronze/16_create_bronze_doe_migrant_worker.sql",
+    "bronze/17_create_bronze_bma_zone_districts.sql",
 ]
 SILVER_SCRIPTS: list[str] = [
     "silver/18_create_silver_api_sources.sql",
@@ -153,6 +154,7 @@ def print_bronze_summary() -> None:
     print_row_counts("bronze", ["tambon_xwalk"])
     print_row_counts("bronze", ["dopa_population_year", "dopa_population_supplement"])
     print_row_counts("bronze", ["doe_migrant_worker_monthly"])
+    print_row_counts("bronze", ["bma_zone_districts"])
 
 
 def print_silver_summary() -> None:
@@ -230,6 +232,10 @@ def main() -> None:
     import ingest_api_doe_migrant_worker, extract_load_api_doe_migrant_worker
     run_live_source("live DOE migrant worker permit monthly PDF (kmch-ml input-parity gap 2)",
                      ingest_api_doe_migrant_worker.run, extract_load_api_doe_migrant_worker.run)
+
+    import ingest_file_bma_zone_districts, extract_load_file_bma_zone_districts
+    run_live_source("file-based BMA zone-district mapping (static geography, dim_bma_zone input)",
+                     ingest_file_bma_zone_districts.run, extract_load_file_bma_zone_districts.run)
 
     print("\n=== SILVER: create tables + transform ===")
     for script in SILVER_SCRIPTS:
