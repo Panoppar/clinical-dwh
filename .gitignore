@@ -33,3 +33,7 @@ docs/maps/
 # OS/editor noise
 .DS_Store
 Thumbs.db
+
+# Python bytecode cache
+__pycache__/
+*.pyc
