@@ -491,3 +491,101 @@ coarse age bands) and `dim_area.area_km2` (`log_density` derivable by
 joining population to area) are both live. Nothing left to build on this
 side; confirming kmch-ml can compute these variables end-to-end is a
 hand-off conversation, not a warehouse task.
+
+---
+
+## Post-closure: converting Gap 1 and Gap 2 to live sources (2026-10-28)
+
+Both gaps above were originally closed with one-time file-based snapshots
+(`external-inputs/dim_population_year.csv` + `pop_total_supplement_2560_2564.csv`
+for Gap 1, `external-inputs/bma_migrant_worker_2568.csv` for Gap 2).
+Following the source-by-source API-feasibility evaluation in this doc,
+both were converted to live sources so the warehouse auto-refreshes
+instead of needing a manual re-upload each time.
+
+### Migrant worker permits → DOE's monthly PDF
+
+Source: DOE's (doe.go.th) own monthly PDF publication, "สถิติการทำงานของ
+คนต่างด้าวประจำเดือน...", scraped from
+`.../statistic/param/site/152/cat/82/sub/73/.../list-label` (confirmed
+live this sub/73 URL returns only monthly reports, not the general
+listing). New files: `pipeline/ingest_api_doe_migrant_worker.py`,
+`pipeline/extract_load_api_doe_migrant_worker.py` (lands + EAV-shreds the
+PDF into `bronze.doe_migrant_worker_monthly`), `sql/bronze/16`,
+`pipeline/transform_silver_doe_migrant_worker.py` (pivots back to
+`(zone, category, nationality)` grain), `sql/silver/23`. `sql/gold/11`
+gained a `report_month_num` column on `fact_migrant_worker_permit`;
+`_build_fact_migrant_worker_permit()` now resolves `date_key` from the
+live report's own year instead of a hardcoded constant. The old file-based
+`bma_migrant_general`/`mou_import`/`renewal`/`illegal` Bronze tables and
+their ingest/Silver scripts are no longer wired into `run_pipeline.py`
+(left on disk, unused, pending an explicit decision to delete them —
+retiring them outright was blocked by the harness's auto-mode classifier
+since the live source's month, 2569-09, doesn't match the retired file's
+month, making a same-period reproduction check impossible).
+
+This PDF's text layer turned out to have two independent quirks that
+needed careful handling (both documented inline in
+`extract_load_api_doe_migrant_worker.py`): embedded Thai font subsets
+reassign tone marks to inconsistent Private Use Area codepoints per
+subset, and the whole document spells SARA AM (ำ) using the legacy
+decomposed NIKHAHIT+SARA AA form instead of the precomposed character.
+Both are normalized away before any text comparison. A multi-page table's
+continuation pages repeat the title with a trailing "(ต่อ)" ("continued")
+suffix, which gets stripped rather than misread as a real category name.
+
+Verified: zone 1's MOU permit total (10,000) matches exactly between the
+overview table and its own nationality-breakdown table; a nationality
+breakdown's component values sum exactly to its own stated total (table 7:
+39,405 + 211,560 + 6 + 1 = 250,972). 430 Gold fact rows for report period
+2026-09 (2569-09 BE), confirmed via a clean full pipeline run.
+
+### DOPA population → stat.bora.dopa.go.th's download portal
+
+Source: DOPA's own download portal (not the `stat_forward.php` JSON API
+investigated earlier in this doc, which was never confirmed to expose
+final population counts) — two plain static files, confirmed live to need
+only a browser-like User-Agent header, no WAF issue:
+  - `https://stat.bora.dopa.go.th/new_stat/file/{YY}/stat_t{YY}.txt` —
+    nationwide, one row per province/district/subdistrict, carries numeric
+    codes but MALE/FEMALE/TOTAL only.
+  - `https://stat.bora.dopa.go.th/new_stat/file/{YYMM}/{YYMM}cc{province}.txt`
+    — per-province, single-year-of-age × sex breakdown (102 ages), but no
+    codes at all (areas identified by name only).
+
+New files: `pipeline/ingest_api_dopa_population.py` (discovers the latest
+year from the site's own menu, lands both files for the 3 catchment
+provinces), `pipeline/extract_load_api_dopa_population.py`. The two
+datasets are confirmed to publish on different schedules (the age
+breakdown was already on year 2569 while the plain-count dataset still
+topped out at 2568 on 2026-10-28), so the ingest always targets whichever
+year the plain-count dataset's own menu lists as latest — the one
+guaranteed to have both.
+
+Since the age-breakdown file has no codes, its rows are matched to the
+plain file's numeric codes by POSITION (confirmed live both files list
+every area in the same order, same count per province) rather than name
+matching, with a two-pointer resync fallback for the one province
+(Chachoengsao) where a single subdistrict row is missing from the age file
+only. Age bands are aggregated from the 102 single-year values into the
+same fine/coarse bands `bronze.dopa_population_year` already used (kept
+unchanged from the original file-based schema) so Silver and Gold needed
+no changes — only the ingest/extract_load layer is new. Multiple original
+tambons that merge into one `dim_area` unit (the 7 Bangkok post-2019
+khwaeng splits) are summed before landing, not left as separate rows.
+
+Unit-code resolution reads `bronze.tambon_xwalk` directly rather than
+`gold.dim_tambon_unit_xwalk` (a straight copy of the same rows) — this was
+a real ordering constraint, not a style choice: `dim_date` needs
+`silver.dopa_population_by_unit_year`'s year range, which needs this
+source's Bronze rows, which would otherwise need `gold.dim_area` to exist
+first inside the same `transform_gold_dimensions.run()` call. Reading
+Bronze directly lets this source run in the normal Bronze-phase position
+alongside every other live source.
+
+Verified: Bangkok's population sums to exactly 5,422,568 across its 50
+merged units, matching DOPA's own published provincial total exactly. 312
+Gold fact rows for 2025 (year_be 2568) plus 715 carried-over `total_only`
+rows from the file-based supplement (2560-2564, still a permanent
+file-based exception — no live equivalent exists for that historical
+backfill), confirmed via a clean full pipeline run.

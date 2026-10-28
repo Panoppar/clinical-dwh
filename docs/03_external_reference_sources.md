@@ -1,8 +1,8 @@
 # External Reference Data — Provenance & Scope
 
-## Source inventory (2026-10-27) — by origin type
+## Source inventory (2026-10-28) — by origin type
 
-**11 distinct sources, 2 origin types.** Every source lands through the
+**12 distinct sources, 2 origin types.** Every source lands through the
 same SeaweedFS landing zone (versioned, content-hashed) regardless of
 type — the only difference is *how* bytes get there: an HTTP call this
 pipeline makes itself ("Live API"), or a file supplied directly and
@@ -12,7 +12,13 @@ available any other way (a one-time government publication, a GitHub
 repo's community-maintained reference list), not because they're a
 fallback.
 
-### Live API (8 sources — HTTP call on every pipeline run)
+Two sources moved from file-based to live on 2026-10-28 (DOPA population,
+BMA/DOE migrant worker permits) — see
+`docs/06_kmch_ml_gap_closure_plan.md`'s "Post-closure: converting Gap 1
+and Gap 2 to live sources" section for the full investigation and
+implementation notes.
+
+### Live API (10 sources — HTTP call on every pipeline run)
 
 | # | Source | Endpoint | Status | Bronze table(s) | Verified rows |
 |---|---|---|---|---|---|
@@ -24,31 +30,33 @@ fallback.
 | 6 | OSRM road routing | `router.project-osrm.org` | ✅ Working | `geo_travel_matrix` | 312 |
 | 7 | DDS disease ranking | `doe.moph.go.th/dds-report` | ❌ Blocked — confirmed server-side (missing PostgreSQL driver on DDS's own backend since 2026-10-25), not this code | `api_dds_disease_ranking` | 0 |
 | 8 | OSM hospital facilities (Overpass) | `overpass-api.de` | ❌ Blocked — confirmed network-level (HTTP 406 from both the container and the host directly), not this code | `geo_hospital_facility` | 0 |
+| 9 | DOPA population by area/year | `stat.bora.dopa.go.th` (two plain files: nationwide codes + per-province age breakdown) | ✅ Working (browser-like User-Agent, no WAF issue) | `dopa_population_year` | 312 (merged-unit grain) |
+| 10 | DOE migrant worker permits | `doe.go.th` (monthly PDF publication) | ✅ Working (browser-like User-Agent, no WAF issue) | `doe_migrant_worker_monthly` | 1,518 (EAV) |
 
-### File-based (3 sources — a supplied file, not an HTTP call this pipeline makes)
+### File-based (2 sources — a supplied file, not an HTTP call this pipeline makes)
 
 | # | Source | Original file | Bronze table(s) | Verified rows |
 |---|---|---|---|---|
-| 9 | Tambon↔unit crosswalk | `xwalk_tambon_unit.csv` | `tambon_xwalk` | 323 |
-| 10 | DOPA population by area/year | `dim_population_year.csv` + `pop_total_supplement_2560_2564.csv` | `dopa_population_year`, `dopa_population_supplement` | 2,093 + 715 |
-| 11 | BMA migrant worker permits | `ข้อมูลแรงงานต่างด้าว.xlsx` (2568 BE snapshot) | `bma_migrant_general`, `bma_migrant_mou_import`, `bma_migrant_renewal`, `bma_migrant_illegal` | 11 × 4 |
+| 11 | Tambon↔unit crosswalk | `xwalk_tambon_unit.csv` | `tambon_xwalk` | 323 |
+| 12 | DOPA population supplement (2560-2564 backfill) | `pop_total_supplement_2560_2564.csv` | `dopa_population_supplement` | 715 |
 
-**Why these 3 are file-based, not live**: none of them are available via
-any API. The crosswalk and population data are specific, one-time exports
-from kmch-ml's own prior work and DOPA's published stats respectively, not
-publications with a stable fetchable endpoint; the migrant-worker data is
-a single dated snapshot publication (titled "...2568"), not a queryable
-API. Each is a **deliberate, scoped exception** to this project's
-live-API-first default — not a reversion to the older, larger file-based
-architecture an earlier phase of this project removed entirely (see the
-historical note below). All 3 are bind-mounted read-only at
-`external-inputs/` (`docker-compose.yml`), the same pattern `sql/` already
-uses — updating any of them later needs no image rebuild.
+**Why these 2 are file-based, not live**: neither is available via any
+API. The crosswalk is a specific, one-time export from kmch-ml's own prior
+work, not a publication with a stable fetchable endpoint. The population
+supplement backfills 5 historical years (2560-2564) for Samut Prakan/
+Chachoengsao that DOPA's own live download portal only ever publishes the
+*current* year for — there's no live equivalent to pull that history from.
+Each is a **deliberate, scoped exception** to this project's live-API-first
+default — not a reversion to the older, larger file-based architecture an
+earlier phase of this project removed entirely (see the historical note
+below). Both are bind-mounted read-only at `external-inputs/`
+(`docker-compose.yml`), the same pattern `sql/` already uses — updating
+either later needs no image rebuild.
 
-**Totals**: 6 of 8 live-API sources are currently reachable; both blocked
+**Totals**: 8 of 10 live-API sources are currently reachable; both blocked
 ones are confirmed external, not a defect here, and the pipeline's
 `run_live_source()` wrapper ensures one source's outage never blocks any
-other source's refresh. All 3 file-based sources are fully loaded.
+other source's refresh. Both file-based sources are fully loaded.
 
 ---
 
@@ -164,6 +172,12 @@ section stays as the provenance record, that doc as the working plan).
   Also required extending `dim_date` from 5 years (2022-2026) to 10
   (2017-2026) to cover this data's full range.
 
+  **Superseded 2026-10-28**: `dim_population_year.csv`'s role is now
+  played by a live source (`stat.bora.dopa.go.th`) — see
+  `docs/06_kmch_ml_gap_closure_plan.md`'s "Post-closure" section. The
+  supplement file above is unaffected and remains the permanent file-based
+  backfill it always was.
+
 - **`fact_factory.area_key` + `dim_industry_division` +
   `agg_industrial_concentration_by_unit(_division)`** (industrial
   location quotient, kmch-ml input-parity gap 3): `area_key` is additive
@@ -198,6 +212,13 @@ section stays as the provenance record, that doc as the working plan).
   zone↔district mapping is a many-to-many bridge table, parsed from the
   source file's own district-name list — all 50 links matched against
   `dim_geography.district_name` with zero unmatched.
+
+  **Superseded 2026-10-28**: the BMA/Dept. of Employment file's role is
+  now played by a live source (DOE's own monthly PDF, `doe.go.th`) — see
+  `docs/06_kmch_ml_gap_closure_plan.md`'s "Post-closure" section. The old
+  file-based Bronze tables (`bma_migrant_general`/`mou_import`/`renewal`/
+  `illegal`) are no longer wired into the pipeline, left on disk pending
+  an explicit retirement decision.
 
 - **`dim_area`** (catchment-area dimension): built from
   `DevelopedbyWill/thailand-canonical-admin-names` (GitHub, public, CC BY

@@ -378,38 +378,42 @@ def _build_fact_population_by_area(silver_conn, gold_conn):
     print(f"[gold_fact] fact_population_by_area: {len(rows)} rows")
 
 
-# Source publication is titled "...2568" (BE) = 2025 CE -- a single
-# snapshot, not a time series (kmch-ml input-parity gap 2).
-BMA_MIGRANT_WORKER_YEAR_CE = 2025
-
-
 def _build_fact_migrant_worker_permit(silver_conn, gold_conn):
+    with silver_conn.cursor() as scur:
+        scur.execute(
+            "SELECT zone_id, report_year_ce, report_month_num, permit_category, nationality, total, male, female "
+            "FROM doe_migrant_worker_permit_monthly"
+        )
+        silver_rows = scur.fetchall()
+
+    if not silver_rows:
+        raise RuntimeError("fact_migrant_worker_permit: silver.doe_migrant_worker_permit_monthly is empty")
+    # One DOE report per pipeline run -- same report_year_ce for every row.
+    report_year_ce = silver_rows[0][1]
+
     with gold_conn.cursor() as cur:
         cur.execute("SELECT zone_key, zone_id FROM dim_bma_zone")
         zone_lookup = {zid: zkey for zkey, zid in cur.fetchall()}
-        cur.execute("SELECT date_key FROM dim_date WHERE year_ce=%s", (BMA_MIGRANT_WORKER_YEAR_CE,))
+        cur.execute("SELECT date_key FROM dim_date WHERE year_ce=%s", (report_year_ce,))
         row = cur.fetchone()
         if row is None:
-            raise RuntimeError(f"fact_migrant_worker_permit: dim_date has no row for year_ce={BMA_MIGRANT_WORKER_YEAR_CE}")
+            raise RuntimeError(f"fact_migrant_worker_permit: dim_date has no row for year_ce={report_year_ce}")
         date_key = row[0]
 
-    with silver_conn.cursor() as scur:
-        scur.execute("SELECT zone_id, permit_category, nationality, total, male, female FROM bma_migrant_worker_permit")
-        silver_rows = scur.fetchall()
-
     rows = [
-        (zone_lookup[zone_id], date_key, category, nationality, total, male, female)
-        for zone_id, category, nationality, total, male, female in silver_rows
+        (zone_lookup[zone_id], date_key, month_num, category, nationality, total, male, female)
+        for zone_id, _year_ce, month_num, category, nationality, total, male, female in silver_rows
     ]
 
     insert_sql = (
-        "INSERT INTO fact_migrant_worker_permit (zone_key, date_key, permit_category, nationality, total, male, female) "
-        "VALUES (%s,%s,%s,%s,%s,%s,%s)"
+        "INSERT INTO fact_migrant_worker_permit "
+        "(zone_key, date_key, report_month_num, permit_category, nationality, total, male, female) "
+        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)"
     )
     with gold_conn.cursor() as cur:
         cur.executemany(insert_sql, rows)
     gold_conn.commit()
-    print(f"[gold_fact] fact_migrant_worker_permit: {len(rows)} rows")
+    print(f"[gold_fact] fact_migrant_worker_permit: {len(rows)} rows (report {report_year_ce}-{silver_rows[0][2]:02d})")
 
 
 def run() -> None:

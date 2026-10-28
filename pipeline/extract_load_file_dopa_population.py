@@ -1,7 +1,10 @@
-"""Loads bronze.dopa_population_year and bronze.dopa_population_supplement
-from the two DOPA population files landed by ingest_file_dopa_population.py.
-File-based, single snapshot each (no per-year/per-resource split) -- always
-reads the latest landed version of each.
+"""Loads bronze.dopa_population_supplement from the file landed by
+ingest_file_dopa_population.py. File-based, single snapshot (no
+per-year/per-resource split) -- always reads the latest landed version.
+
+dopa_population_year is loaded by extract_load_api_dopa_population.py now
+(live source, see that module's docstring) -- this script only covers the
+supplement table.
 """
 
 import csv
@@ -16,17 +19,6 @@ import landing_store
 
 BATCH_SIZE = 2000
 
-YEAR_COLUMNS = [
-    "unit_code", "year_be", "ref_month",
-    "fine_male_0-4", "fine_female_0-4", "fine_male_5-9", "fine_female_5-9",
-    "fine_male_10-14", "fine_female_10-14", "fine_male_15-17", "fine_female_15-17",
-    "fine_male_18-22", "fine_female_18-22", "fine_male_23-29", "fine_female_23-29",
-    "fine_male_30-39", "fine_female_30-39", "fine_male_40-49", "fine_female_40-49",
-    "fine_male_50-59", "fine_female_50-59", "fine_male_60+", "fine_female_60+",
-    "coarse_male_0-14", "coarse_female_0-14", "coarse_male_15-59", "coarse_female_15-59",
-    "coarse_male_60+", "coarse_female_60+",
-    "pop_male", "pop_female", "pop_total", "pop_age_known", "pop_unknown_age", "source_file",
-]
 SUPPLEMENT_COLUMNS = ["unit_code", "year_be", "pop_total", "source"]
 
 
@@ -90,7 +82,6 @@ def run() -> None:
     loaded_at = datetime.now(timezone.utc)
     batch_id = f"dopa_population_load_{loaded_at:%Y%m%dT%H%M%S}"
     conn = _connect()
-    _load_one(conn, "year", YEAR_COLUMNS, "dopa_population_year", batch_id)
     _load_one(conn, "supplement", SUPPLEMENT_COLUMNS, "dopa_population_supplement", batch_id)
     conn.close()
 

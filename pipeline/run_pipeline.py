@@ -52,14 +52,14 @@ BRONZE_SCRIPTS: list[str] = [
     "bronze/12_create_bronze_geo_access.sql",
     "bronze/13_create_bronze_tambon_xwalk.sql",
     "bronze/14_create_bronze_dopa_population.sql",
-    "bronze/15_create_bronze_bma_migrant_worker.sql",
+    "bronze/16_create_bronze_doe_migrant_worker.sql",
 ]
 SILVER_SCRIPTS: list[str] = [
     "silver/18_create_silver_api_sources.sql",
     "silver/19_create_silver_geo_boundary.sql",
     "silver/20_create_silver_geo_access.sql",
     "silver/21_create_silver_dopa_population.sql",
-    "silver/22_create_silver_bma_migrant_worker.sql",
+    "silver/23_create_silver_doe_migrant_worker.sql",
 ]
 GOLD_SCRIPTS: list[str] = [
     "gold/01_create_gold_dimensions.sql",
@@ -152,7 +152,7 @@ def print_bronze_summary() -> None:
     print_row_counts("bronze", ["geo_hospital_facility", "geo_travel_matrix"])
     print_row_counts("bronze", ["tambon_xwalk"])
     print_row_counts("bronze", ["dopa_population_year", "dopa_population_supplement"])
-    print_row_counts("bronze", ["bma_migrant_general", "bma_migrant_mou_import", "bma_migrant_renewal", "bma_migrant_illegal"])
+    print_row_counts("bronze", ["doe_migrant_worker_monthly"])
 
 
 def print_silver_summary() -> None:
@@ -163,7 +163,7 @@ def print_silver_summary() -> None:
     print_row_counts("silver", ["geo_boundary_subdistrict", "geo_boundary_district"])
     print_row_counts("silver", ["geo_hospital_facility", "geo_travel_matrix"])
     print_row_counts("silver", ["dopa_population_by_unit_year"])
-    print_row_counts("silver", ["bma_migrant_worker_permit"])
+    print_row_counts("silver", ["doe_migrant_worker_permit_monthly"])
 
 
 def print_gold_summary() -> None:
@@ -216,13 +216,20 @@ def main() -> None:
     run_live_source("file-based tambon-unit crosswalk (dim_area grouping fix, kmch-ml input-parity gap 4/6)",
                      ingest_file_tambon_xwalk.run, extract_load_file_tambon_xwalk.run)
 
+    # Must run after tambon-unit crosswalk above -- resolves unit_codes from
+    # bronze.tambon_xwalk directly (see extract_load_api_dopa_population.py's
+    # docstring for why this reads Bronze instead of Gold).
+    import ingest_api_dopa_population, extract_load_api_dopa_population
+    run_live_source("live DOPA population (kmch-ml input-parity gap 1)",
+                     ingest_api_dopa_population.run, extract_load_api_dopa_population.run)
+
     import ingest_file_dopa_population, extract_load_file_dopa_population
-    run_live_source("file-based DOPA population (kmch-ml input-parity gap 1)",
+    run_live_source("file-based DOPA population supplement (2560-2564 backfill, kmch-ml input-parity gap 1)",
                      ingest_file_dopa_population.run, extract_load_file_dopa_population.run)
 
-    import ingest_file_bma_migrant_worker, extract_load_file_bma_migrant_worker
-    run_live_source("file-based BMA migrant worker permits (kmch-ml input-parity gap 2)",
-                     ingest_file_bma_migrant_worker.run, extract_load_file_bma_migrant_worker.run)
+    import ingest_api_doe_migrant_worker, extract_load_api_doe_migrant_worker
+    run_live_source("live DOE migrant worker permit monthly PDF (kmch-ml input-parity gap 2)",
+                     ingest_api_doe_migrant_worker.run, extract_load_api_doe_migrant_worker.run)
 
     print("\n=== SILVER: create tables + transform ===")
     for script in SILVER_SCRIPTS:
@@ -245,8 +252,8 @@ def main() -> None:
     transform_silver_geo_access.run_facility()  # travel_matrix comes later -- see mid-Gold OSRM stage below
     import transform_silver_dopa_population
     transform_silver_dopa_population.run()  # must run before transform_gold_dimensions.run() -- _build_dim_date reads its year_ce range
-    import transform_silver_bma_migrant_worker
-    transform_silver_bma_migrant_worker.run()
+    import transform_silver_doe_migrant_worker
+    transform_silver_doe_migrant_worker.run()
 
     print("\n=== GOLD: create tables ===")
     for script in GOLD_SCRIPTS:

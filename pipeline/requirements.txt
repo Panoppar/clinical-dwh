@@ -4,3 +4,4 @@ requests==2.31.0
 boto3==1.34.144
 pdfplumber==0.11.4
 xlrd==1.2.0
+beautifulsoup4==4.12.3

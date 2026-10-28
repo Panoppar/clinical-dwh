@@ -9,13 +9,20 @@
 -- geo_key column on dim_bma_zone itself.
 --
 -- fact_migrant_worker_permit's grain is (zone, permit_category,
--- nationality) -- nationality is NULL for the 3 bma_migrant_general
--- categories with no nationality breakdown available; both a
--- nationality-NULL row and 4 nationality rows exist for the other 3
--- categories (MOU import/renewal/illegal registration) -- see
--- sql/silver/22's header for why this is deliberate, not a duplication
--- bug. Single snapshot (2568 BE / 2025 CE), not a time series -- date_key
--- resolves to the one year this publication covers.
+-- nationality, report_month_num) -- nationality is NULL for categories
+-- with no nationality breakdown available; both a nationality-NULL row
+-- and nationality rows exist for categories that do have one -- see
+-- sql/silver/23's header for why this is deliberate, not a duplication
+-- bug.
+--
+-- Sourced live (DOE's monthly PDF, see sql/bronze/16 and
+-- pipeline/transform_silver_doe_migrant_worker.py) since 2026-10-28 --
+-- previously a one-time file-based snapshot (2568 BE / 2025 CE). Still a
+-- single-period snapshot per pipeline run, not an accumulating time
+-- series: every *.sql script in this layer does a full refresh, so only
+-- the latest month's report is ever in this table -- date_key resolves to
+-- whichever year that report's own "ข้อมูล ณ เดือน..." stamp says, and
+-- report_month_num carries the month within it.
 -- ============================================================================
 
 USE gold;
@@ -49,13 +56,14 @@ CREATE TABLE `fact_migrant_worker_permit` (
     `fact_id`          BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `zone_key`          INT UNSIGNED NOT NULL,
     `date_key`           INT UNSIGNED NOT NULL,
-    `permit_category`     VARCHAR(100) NOT NULL,
-    `nationality`          VARCHAR(50) COMMENT 'NULL = category-level total, no nationality breakdown available',
-    `total`                 INT NOT NULL,
-    `male`                   INT NOT NULL,
-    `female`                  INT NOT NULL,
+    `report_month_num`    TINYINT UNSIGNED NOT NULL COMMENT '1-12, the month within date_key''s year this report covers',
+    `permit_category`      VARCHAR(300) NOT NULL,
+    `nationality`            VARCHAR(50) COMMENT 'NULL = category-level total, no nationality breakdown available',
+    `total`                   INT NOT NULL,
+    `male`                     INT NOT NULL,
+    `female`                    INT NOT NULL,
     KEY `ix_fmwp_zone` (`zone_key`),
-    KEY `ix_fmwp_category` (`permit_category`),
+    KEY `ix_fmwp_category` (`permit_category`(100)),
     CONSTRAINT `fk_fmwp_zone` FOREIGN KEY (`zone_key`) REFERENCES `dim_bma_zone` (`zone_key`),
     CONSTRAINT `fk_fmwp_date` FOREIGN KEY (`date_key`) REFERENCES `dim_date` (`date_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
