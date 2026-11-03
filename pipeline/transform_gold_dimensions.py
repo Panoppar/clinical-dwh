@@ -15,6 +15,9 @@ import math
 import os
 
 import pymysql
+from shapely.affinity import scale as _affine_scale
+from shapely.geometry import shape as _shapely_shape
+from shapely.ops import unary_union
 
 
 def _connect(database):
@@ -603,6 +606,108 @@ def _build_dim_tambon_unit_xwalk(bronze_conn, silver_conn, gold_conn):
     print(f"[gold_dim] dim_tambon_unit_xwalk: {len(rows)} tambons ({n_split} post-2019 split siblings)")
 
 
+_ADJ_BUFFER_M = 5  # same micro-gap tolerance kmch-ml's own notebook documents needing for this exact polygon source
+_ADJ_ROOK_MIN_M = 10  # shared-boundary length above which a touch counts as "rook" (DEGURBA centre tier) not just "queen" (corner touch)
+_ADJ_REF_LAT = 13.7  # Bangkok-area reference latitude for the local equirectangular meters approximation below -- same spherical-Earth constant as _haversine_km, just reused as a linear (not great-circle) scale since the tolerances here are a few meters, not kilometers
+
+
+def _local_meters_scale(lat_deg: float = _ADJ_REF_LAT) -> tuple[float, float]:
+    """-> (meters_per_degree_lon, meters_per_degree_lat), a local linear
+    approximation (not a true projection) -- good enough at a few-meter
+    tolerance across this project's 3-province extent, same spirit as
+    _haversine_km's spherical approximation elsewhere in this file."""
+    lat_rad = math.radians(lat_deg)
+    m_per_deg_lat = (math.pi / 180.0) * _EARTH_RADIUS_KM * 1000.0
+    return m_per_deg_lat * math.cos(lat_rad), m_per_deg_lat
+
+
+def _build_bridge_area_adjacency(bronze_conn, gold_conn):
+    """kmch-ml input-parity: precomputes the polygon-contiguity graph
+    (rook/queen) that CL-G1 (DEGURBA urban/cluster/rural) needs, so the
+    separate ML project never has to carry GIS dependencies or recompute
+    unchanging geometry on every scheduled run. Must run after
+    _build_dim_area()/_build_dim_tambon_unit_xwalk() (reads both).
+
+    Adjacency is checked at the tambon (polygon) grain -- a unit's member
+    tambons' own geometries, not a true dissolved union -- since "does unit
+    A touch unit B" only needs "does any tambon of A touch any tambon of
+    B", which is cheaper and avoids a real unary_union per unit. Shared
+    boundary length is still summed across all touching tambon-pairs so a
+    merged unit's total shared-boundary-with-a-neighbour is correct.
+
+    Algorithm matches kmch-ml's own notebook exactly (captured from its
+    live source during this integration): buffer by 5m to absorb the same
+    small polygon gaps their own ADJ_BUFFER_M fallback documents, and
+    shared-boundary length = buffer(1m).intersection(other.boundary).length,
+    rook if that exceeds 10m."""
+    polygons_by_subdistrict, _ = _load_boundary_polygons(bronze_conn)
+
+    with gold_conn.cursor() as cur:
+        cur.execute("SELECT tambon_code, unit_code FROM dim_tambon_unit_xwalk")
+        unit_by_tambon = dict(cur.fetchall())
+        cur.execute("SELECT unit_code, area_key FROM dim_area")
+        area_key_by_unit = dict(cur.fetchall())
+
+    mx, my = _local_meters_scale()
+
+    # One scaled shapely geometry per tambon that both has a polygon and
+    # resolves to a unit that made it into dim_area.
+    tambon_geoms: dict[str, object] = {}
+    tambon_unit: dict[str, str] = {}
+    for tambon_code, unit_code in unit_by_tambon.items():
+        if unit_code not in area_key_by_unit:
+            continue
+        entry = polygons_by_subdistrict.get(tambon_code)
+        if entry is None:
+            continue
+        geom = _shapely_shape(entry["geometry"])
+        tambon_geoms[tambon_code] = _affine_scale(geom, xfact=mx, yfact=my, origin=(0, 0))
+        tambon_unit[tambon_code] = unit_code
+
+    codes = list(tambon_geoms)
+    bounds = {c: tambon_geoms[c].bounds for c in codes}  # (minx, miny, maxx, maxy), already in meters
+
+    pair_shared_m: dict[tuple[str, str], float] = {}
+    for i, ca in enumerate(codes):
+        ax0, ay0, ax1, ay1 = bounds[ca]
+        geom_a = tambon_geoms[ca]
+        buf_a_touch = geom_a.buffer(_ADJ_BUFFER_M)
+        buf_a_shared = geom_a.buffer(1)
+        for cb in codes[i + 1:]:
+            unit_a, unit_b = tambon_unit[ca], tambon_unit[cb]
+            if unit_a == unit_b:
+                continue  # siblings within the same merged unit -- not a cross-unit adjacency
+            bx0, by0, bx1, by1 = bounds[cb]
+            # AABB pre-filter, padded by the buffer tolerance -- skip the
+            # expensive shapely ops for pairs that can't possibly touch.
+            if ax0 - _ADJ_BUFFER_M > bx1 or bx0 - _ADJ_BUFFER_M > ax1:
+                continue
+            if ay0 - _ADJ_BUFFER_M > by1 or by0 - _ADJ_BUFFER_M > ay1:
+                continue
+            geom_b = tambon_geoms[cb]
+            if not buf_a_touch.intersects(geom_b):
+                continue
+            shared_len = buf_a_shared.intersection(geom_b.boundary).length
+            key = tuple(sorted((unit_a, unit_b)))
+            pair_shared_m[key] = pair_shared_m.get(key, 0.0) + shared_len
+
+    rows = []
+    for (unit_a, unit_b), shared_m in pair_shared_m.items():
+        area_key_a, area_key_b = sorted((area_key_by_unit[unit_a], area_key_by_unit[unit_b]))
+        rows.append((area_key_a, area_key_b, round(shared_m, 2), int(shared_m > _ADJ_ROOK_MIN_M)))
+
+    insert_sql = (
+        "INSERT INTO bridge_area_adjacency (area_key_a, area_key_b, shared_boundary_m, is_rook) "
+        "VALUES (%s,%s,%s,%s)"
+    )
+    with gold_conn.cursor() as cur:
+        cur.executemany(insert_sql, rows)
+    gold_conn.commit()
+
+    n_rook = sum(1 for r in rows if r[3])
+    print(f"[gold_dim] bridge_area_adjacency: {len(rows)} pairs ({n_rook} rook)")
+
+
 def _build_dim_facility(silver_conn, gold_conn):
     """Always seeds the fixed KMCH coordinate as destination_id='KMCH',
     regardless of whether OSM facility discovery has landed anything --
@@ -726,6 +831,7 @@ def run() -> None:
     _build_dim_disease(silver_conn, gold_conn)
     _build_dim_area(bronze_conn, silver_conn, gold_conn)
     _build_dim_tambon_unit_xwalk(bronze_conn, silver_conn, gold_conn)
+    _build_bridge_area_adjacency(bronze_conn, gold_conn)
     _build_dim_facility(silver_conn, gold_conn)
     _build_dim_bma_zone(bronze_conn, gold_conn)
     _build_dim_catchment_place(silver_conn, gold_conn)

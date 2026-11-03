@@ -95,6 +95,8 @@ GOLD_SCRIPTS: list[str] = [
     "gold/10_create_gold_industrial_concentration.sql",
     "gold/11_create_gold_bma_zone.sql",
     "gold/12_create_gold_catchment_place.sql",
+    "gold/13_create_gold_area_adjacency.sql",
+    "gold/14_create_gold_ml_outputs.sql",
 ]
 
 

@@ -58,4 +58,20 @@ GRANT ALL PRIVILEGES ON metabase_app.* TO 'metabase_app'@'%';
 CREATE USER IF NOT EXISTS 'kmch_ml_ro'@'%' IDENTIFIED BY 'ChangeMe_Kmch_Ml_Ro_2026!';
 GRANT SELECT ON gold.* TO 'kmch_ml_ro'@'%';
 
+-- ----------------------------------------------------------------------------
+-- kmch-ml community-labels write-back account: SELECT across all of gold
+-- (reads the same input tables kmch_ml_ro does) plus INSERT on exactly the
+-- two tables the scheduled ML project (C:\Users\PunPun\Desktop\Workspace\
+-- KMITL\ML) writes its daily results into -- deliberately a SEPARATE
+-- account from kmch_ml_ro above, not a grant added to it, so a leaked
+-- write-capable credential has a known, narrow blast radius (two tables,
+-- insert-only, no update/delete) independent of whatever else might use
+-- the read-only account. No UPDATE/DELETE -- write-back keeps full
+-- history per run_date (append-only), it never needs to modify a past row.
+-- ----------------------------------------------------------------------------
+CREATE USER IF NOT EXISTS 'kmch_ml_rw'@'%' IDENTIFIED BY 'ChangeMe_Kmch_Ml_Rw_2026!';
+GRANT SELECT ON gold.* TO 'kmch_ml_rw'@'%';
+GRANT INSERT, SELECT ON gold.ml_area_community_type TO 'kmch_ml_rw'@'%';
+GRANT INSERT, SELECT ON gold.ml_area_profile_cluster TO 'kmch_ml_rw'@'%';
+
 FLUSH PRIVILEGES;
