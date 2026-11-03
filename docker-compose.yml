@@ -159,8 +159,22 @@ services:
     environment:
       MB_JETTY_PORT: ${MB_JETTY_PORT}
       JAVA_TIMEZONE: Asia/Bangkok
-    volumes:
-      - metabase_data:/metabase-data
+      # App database (dashboards/questions/users/permissions) -- NOT the
+      # default embedded H2, which Metabase's own docs say isn't supported
+      # for production use (no real backup/restore story, not safe under
+      # concurrent writes). Runs on the warehouse's own MySQL server, in a
+      # dedicated metabase_app schema (sql/00_init_schemas_and_grants.sql)
+      # that's completely separate from gold -- this is infrastructure for
+      # the BI tool itself, not warehouse data. No local volume needed for
+      # Metabase's own data anymore -- confirmed H2 is no longer used at
+      # all (both its old default path and the previous metabase_data
+      # mount are empty once MB_DB_TYPE is set).
+      MB_DB_TYPE: mysql
+      MB_DB_DBNAME: metabase_app
+      MB_DB_PORT: ${DWH_DB_PORT}
+      MB_DB_USER: ${DWH_METABASE_APP_USER}
+      MB_DB_PASS: ${DWH_METABASE_APP_PASSWORD}
+      MB_DB_HOST: warehouse-db
     depends_on:
       warehouse-db:
         condition: service_healthy
@@ -173,5 +187,4 @@ networks:
 
 volumes:
   warehouse_db_data:
-  metabase_data:
   landing_zone_data:

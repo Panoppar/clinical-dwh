@@ -9,6 +9,13 @@ CREATE DATABASE IF NOT EXISTS bronze CHARACTER SET utf8mb4 COLLATE utf8mb4_unico
 CREATE DATABASE IF NOT EXISTS silver CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE IF NOT EXISTS gold   CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
+-- metabase_app: Metabase's OWN application metadata (dashboards, questions,
+-- users, permissions) -- a completely different thing from the gold schema
+-- it queries for data. Separate from bronze/silver/gold on purpose: this is
+-- infrastructure for the BI tool itself, not warehouse data, and must never
+-- be touched by the ELT pipeline's DROP+CREATE DDL.
+CREATE DATABASE IF NOT EXISTS metabase_app CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
 -- ----------------------------------------------------------------------------
 -- ELT service account: full DML/DDL rights across all three layers.
 -- Used only by the elt-runner container, never by Metabase.
@@ -26,6 +33,20 @@ GRANT ALL PRIVILEGES ON gold.*   TO 'dwh_elt'@'%';
 -- ----------------------------------------------------------------------------
 CREATE USER IF NOT EXISTS 'metabase_ro'@'%' IDENTIFIED BY 'ChangeMe_Metabase_Ro_2026!';
 GRANT SELECT ON gold.* TO 'metabase_ro'@'%';
+
+-- ----------------------------------------------------------------------------
+-- Metabase's OWN app-database account: full DML/DDL, but ONLY on
+-- metabase_app -- deliberately separate from metabase_ro above (which
+-- stays read-only/gold-only for Metabase's *data* connection). Production
+-- deployments should not run Metabase on its default embedded H2 database
+-- (not supported for production use, no real backup/restore story beyond
+-- snapshotting a Docker volume) -- this account lets Metabase run its
+-- dashboards/questions/users on the same durable, backup-able MySQL server
+-- the warehouse already uses, instead of a separate dedicated Postgres
+-- instance.
+-- ----------------------------------------------------------------------------
+CREATE USER IF NOT EXISTS 'metabase_app'@'%' IDENTIFIED BY 'ChangeMe_Metabase_App_2026!';
+GRANT ALL PRIVILEGES ON metabase_app.* TO 'metabase_app'@'%';
 
 -- ----------------------------------------------------------------------------
 -- kmch-ml service account: SELECT-only, GOLD-only -- same enforcement model
