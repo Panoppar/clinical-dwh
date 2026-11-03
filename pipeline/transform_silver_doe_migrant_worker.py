@@ -18,6 +18,32 @@ resolutions and change every time one is superseded):
     exists, the table is scoped to that ONE category and its group labels
     are nationalities -- the "ทั้งหมด" (all-nationalities) row becomes the
     nationality=NULL total row, matching the first case's semantics.
+
+Raw category text is then normalized to the 8 official permit categories
+under the Alien Employment Management Emergency Decree B.E. 2560 (as
+amended B.E. 2561): มาตรา 59 ทั่วไป, มาตรา 59 MOU, มาตรา 61, มาตรา 62,
+มาตรา 63, มาตรา 63/1, มาตรา 63/2, มาตรา 64 (see _canonical_category()).
+Table 2 on its own already has several raw sub-columns per official
+category (e.g. three under มาตรา 62: Single Window / กฎหมายอื่น /
+สงเสริมการลงทุน -- the official definition explicitly groups all of these
+under section 62), so category-level (nationality=NULL) totals are summed
+across every table-2 sub-column that normalizes to the same official
+category, using table 2's own values exclusively -- a detail table's own
+"ทั้งหมด" (all-nationalities) row for that same category is NOT also
+counted, since it would just double the same underlying figure table 2
+already reports directly (confirmed live: every detail table's "ทั้งหมด"
+row sits under a title-suffix that maps to a raw category already present
+as one of table 2's own columns). Detail tables are read only for their
+actual per-nationality rows (nationality != "ทั้งหมด").
+
+มาตรา 63/2 carries one extra wrinkle: table 2 has a bare "มาตรา 63/2" /
+"มาตรา 63/2 คนต่างด้าวตามมติคณะรัฐมนตรี (ข้อมูลเดิมกรมการจัดหางาน)" column
+explicitly labeled as old/legacy DOE data, alongside several
+date-stamped Cabinet Resolution round columns (e.g. "มาตรา 63/2
+ต่ออายุมติ ครม. 8 ก.ค 68"). The legacy column is excluded --
+_canonical_category() returns None for it -- in favor of summing the
+date-stamped rounds, which collectively represent the current registered
+total under that section.
 """
 
 import os
@@ -30,6 +56,7 @@ CATEGORY_GRAND_TOTAL_LABEL = "รวมทั้งสิ้น"
 ZONE_NUM_RE = re.compile(r"(\d+)\s*$")
 REPORT_DATE_RE = re.compile(r"เดือน\s*(\S+)\s*(\d{4})")
 TITLE_BOILERPLATE_PREFIX = "จำนวนคนต่างด้าวที่ได้รับอนุญาตทำงานคงเหลือทั่วราชอาณาจักร"
+SECTION_RE = re.compile(r"^มาตรา\s*(\d+)(/\d+)?")
 
 # This PDF's text layer decomposes SARA AM into NIKHAHIT+SARA AA and
 # reassigns tone marks to inconsistent Private Use Area codepoints per font
@@ -90,17 +117,49 @@ def _strip_boilerplate_prefix(title: str) -> str | None:
     return None
 
 
-def _category_and_nationality(table_title: str, group_label: str) -> tuple[str, str | None]:
+def _category_and_nationality(table_title: str, group_label: str) -> tuple[str, str | None, bool]:
+    """-> (raw_category_text, nationality, is_overview). is_overview=True
+    means this row came from table 2 directly (the zone x category
+    breakdown) -- see module docstring for why only table-2 rows feed the
+    nationality=NULL category totals."""
     suffix = _strip_boilerplate_prefix(table_title)
     if not suffix:
         # Boilerplate not found, or found with nothing after it (table 2's
         # own title) -- either way, this table is itself a category
         # breakdown, not a nationality one.
-        return group_label, None
+        return group_label, None, True
     if suffix.startswith("(") and suffix.endswith(")"):
         suffix = suffix[1:-1]  # cosmetic only -- strip one outer paren layer, keep any nested ones
     nationality = None if group_label == CATEGORY_ALL_NATIONALITIES_LABEL else group_label
-    return suffix, nationality
+    return suffix, nationality, False
+
+
+def _canonical_category(raw_label: str) -> str | None:
+    """-> one of the 8 official permit categories, or None if raw_label
+    isn't a permit-category row (the grand total, or มาตรา 63/2's legacy
+    baseline column -- see module docstring for both)."""
+    s = _strip_marks(raw_label or "").strip()
+    m = SECTION_RE.match(s)
+    if not m:
+        return None
+    section, sub = m.group(1), m.group(2) or ""
+    if section == "59":
+        return "มาตรา 59 MOU" if "mou" in s.lower() else "มาตรา 59 ทั่วไป"
+    if section == "61":
+        return "มาตรา 61"
+    if section == "62":
+        return "มาตรา 62"
+    if section == "63" and sub == "/1":
+        return "มาตรา 63/1"
+    if section == "63" and sub == "/2":
+        if "ขอมูลเดิม" in s or s == "มาตรา 63/2":
+            return None  # legacy baseline, superseded by the date-stamped rounds
+        return "มาตรา 63/2"
+    if section == "63":
+        return "มาตรา 63"
+    if section == "64":
+        return "มาตรา 64"
+    return None
 
 
 def run() -> None:
@@ -116,7 +175,7 @@ def run() -> None:
     bronze_conn.close()
 
     report_period = None
-    pivoted = {}  # (zone_id, category, nationality) -> {sex_label: int_value}
+    pivoted = {}  # (zone_id, canonical_category, nationality) -> {sex_label: int_value}
 
     for report_title, table_title, zone_label, group_label, sex_label, value in bronze_rows:
         if report_period is None:
@@ -127,11 +186,19 @@ def run() -> None:
             continue  # Bangkok-wide grand-total row, excluded (see sql/silver/23 header)
         zone_id = int(zone_m.group(1))
 
-        category, nationality = _category_and_nationality(table_title, group_label)
-        if nationality is None and category == CATEGORY_GRAND_TOTAL_LABEL:
+        raw_category, nationality, is_overview = _category_and_nationality(table_title, group_label)
+        if nationality is None and raw_category == CATEGORY_GRAND_TOTAL_LABEL:
             continue  # table 2's own grand-total-across-categories row, exactly the sum of every other category -- same convention as the zone grand-total exclusion above
+        if not is_overview and nationality is None:
+            continue  # a detail table's own "ทั้งหมด" row -- same figure as one of table 2's own columns, see module docstring; only table-2 rows feed category totals
+
+        category = _canonical_category(raw_category)
+        if category is None:
+            continue  # unparseable, or มาตรา 63/2's excluded legacy baseline column
+
         key = (zone_id, category, nationality)
-        pivoted.setdefault(key, {})[sex_label] = int(value)
+        bucket = pivoted.setdefault(key, {})
+        bucket[sex_label] = bucket.get(sex_label, 0) + int(value)
 
     if report_period is None:
         raise RuntimeError("transform_silver_doe_migrant_worker: could not parse report month/year "
