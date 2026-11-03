@@ -55,13 +55,8 @@ CREATE TABLE `geo_boundary_district` (
   `raw_centroid_lat`                    VARCHAR(50),
   `raw_centroid_lon`                     VARCHAR(50),
   `raw_area_km2`                          VARCHAR(50),
-  `raw_bbox_minlat`                        VARCHAR(50),
-  `raw_bbox_minlon`                         VARCHAR(50),
-  `raw_bbox_maxlat`                          VARCHAR(50),
-  `raw_bbox_maxlon`                           VARCHAR(50),
   `raw_num_tambon`                             VARCHAR(20),
   `raw_postal_code_prefixes`                    VARCHAR(255),
-  `raw_notes`                                    VARCHAR(500),
 
   KEY `ix_gbd_code` (`raw_tis1099_district_code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -82,11 +77,11 @@ CREATE TABLE `geo_boundary_polygon` (
   `source_system`       VARCHAR(50)   NOT NULL DEFAULT 'GEO_BOUNDARY',
 
   `raw_adm3_pcode`       VARCHAR(20)  COMMENT 'e.g. TH420803 -- strip leading TH for the bare TIS-1099 code',
-  `raw_adm3_en`           VARCHAR(255),
+  `raw_adm3_en`           VARCHAR(255) COMMENT 'needed because some post-2019 Bangkok split-merge anchor tambons (e.g. TH104701, TH105001) have no row at all in geo_boundary_subdistrict -- this is the only place their name is available',
   `raw_adm3_th`            VARCHAR(255),
   `raw_adm2_pcode`          VARCHAR(20),
-  `raw_adm1_pcode`           VARCHAR(20),
   `raw_geometry_geojson`      LONGTEXT COMMENT 'Full Polygon/MultiPolygon geometry object, raw GeoJSON text',
 
-  KEY `ix_gbp_pcode` (`raw_adm3_pcode`)
+  KEY `ix_gbp_pcode` (`raw_adm3_pcode`),
+  KEY `ix_gbp_adm2` (`raw_adm2_pcode`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

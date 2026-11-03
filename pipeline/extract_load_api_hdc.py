@@ -103,9 +103,8 @@ def _run_report_catalog(conn, report_meta: dict[str, dict]) -> int:
         "INSERT INTO api_hdc_report_catalog "
         "(source_folder, source_file_name, source_sheet_name, source_row_number, "
         "file_hash, ingestion_batch_id, source_system, "
-        "raw_report_code, raw_report_name, raw_subcatalog_id, raw_subcatalog_name, "
-        "raw_catalog_label, raw_active, raw_byear_list) "
-        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+        "raw_report_code, raw_report_name, raw_subcatalog_name, raw_byear_list) "
+        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
     )
 
     rows = []
@@ -117,14 +116,12 @@ def _run_report_catalog(conn, report_meta: dict[str, dict]) -> int:
         info_rows = body.get("rows") or {}
         if isinstance(info_rows, list):
             info_rows = info_rows[0] if info_rows else {}
-        active = body.get("ok") is not False and bool(info_rows.get("byear_list"))
         years = sorted({str(y) for y in (info_rows.get("byear_list") or [])})
         meta = report_meta.get(report_code, {})
         rows.append((
             "hdc", key, None, 1, file_hash, batch_id, "HDC",
             report_code, (info_rows.get("report_name") or "").strip(),
-            meta.get("subcatalog_id"), meta.get("subcatalog_name"), meta.get("catalog_label"),
-            "1" if active else "0", ",".join(years),
+            meta.get("subcatalog_name"), ",".join(years),
         ))
 
     with conn.cursor() as cur:

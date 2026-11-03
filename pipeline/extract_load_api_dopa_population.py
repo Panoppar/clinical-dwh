@@ -24,14 +24,17 @@ needs to change for Bronze and Silver to keep working unmodified, and a true
 single-year-of-age EAV table would be ~100x more rows for data nothing
 downstream consumes at that grain.
 
-Unit codes are resolved from bronze.tambon_xwalk directly, not
-gold.dim_tambon_unit_xwalk (a straight copy of the same rows) -- this lets
-this source run in the normal Bronze-phase position alongside every other
-live source, with no dependency on Gold already being built. That
-dependency would otherwise be circular: transform_gold_dimensions.
-_build_dim_date() reads silver.dopa_population_by_unit_year's year range,
-and needs to run before _build_dim_tambon_unit_xwalk() populates
-gold.dim_area's FK target within that same function.
+Unit codes are resolved directly from bronze.geo_boundary_{subdistrict,
+polygon} (own-polygon match, else the parent district's single fallback
+polygon -- see _load_tambon_lookup()), the same derivation
+transform_gold_dimensions.py's _build_dim_area/_build_dim_tambon_unit_xwalk
+use, rather than waiting on gold.dim_tambon_unit_xwalk. This lets this
+source run in the normal Bronze-phase position alongside every other live
+source, with no dependency on Gold already being built. That dependency
+would otherwise be circular: transform_gold_dimensions._build_dim_date()
+reads silver.dopa_population_by_unit_year's year range, and needs to run
+before _build_dim_tambon_unit_xwalk() populates gold.dim_area's FK target
+within that same function.
 """
 
 import hashlib
@@ -106,22 +109,50 @@ def _latest_key(stem_prefix: str):
 
 
 def _load_tambon_lookup(bronze_conn) -> dict:
-    # Reads bronze.tambon_xwalk directly rather than gold.dim_tambon_unit_xwalk
-    # -- the latter is itself just this same table copied verbatim for these
-    # 3 provinces (confirmed: transform_gold_dimensions._build_dim_tambon_unit_xwalk
-    # does a straight SELECT with no transformation), but reading Bronze
-    # directly means this source can run in the normal Bronze-phase position
-    # alongside every other live source, with no dependency on Gold already
-    # being built -- avoiding a real circular ordering problem (dim_date
-    # needs silver.dopa_population_by_unit_year's year range, which needs
-    # this table's bronze rows, which would otherwise need gold.dim_area to
+    # -> {tambon_code: unit_code} for provinces 10/11/24. Derived directly
+    # from bronze.geo_boundary_{subdistrict,polygon} (own polygon match,
+    # else the parent district's single fallback polygon) -- the same
+    # derivation transform_gold_dimensions.py's _build_dim_area /
+    # _build_dim_tambon_unit_xwalk use (see that function's docstring for
+    # why this replaced an externally-supplied xwalk file 2026-11-03),
+    # just inlined here reading Bronze raw_* columns directly instead of
+    # Silver/Gold -- this source must run in the normal Bronze-phase
+    # position alongside every other live source, with no dependency on
+    # Gold already being built, avoiding a real circular ordering problem
+    # (dim_date needs silver.dopa_population_by_unit_year's year range,
+    # which needs this lookup, which would otherwise need gold.dim_area to
     # exist first).
     with bronze_conn.cursor() as cur:
         cur.execute(
-            "SELECT raw_tambon_code, raw_unit_code FROM tambon_xwalk "
-            "WHERE raw_province_code IN ('10','11','24')"
+            "SELECT raw_adm3_pcode, raw_adm2_pcode FROM geo_boundary_polygon WHERE raw_geometry_geojson IS NOT NULL"
         )
-        return dict(cur.fetchall())
+        poly_rows = cur.fetchall()
+        cur.execute(
+            "SELECT raw_tis1099_subdistrict_code, raw_parent_district_tis1099_code "
+            "FROM geo_boundary_subdistrict WHERE raw_parent_province_tis1099_code IN ('10','11','24')"
+        )
+        tambon_rows = cur.fetchall()
+
+    has_own_polygon: set = set()
+    polys_by_district: dict[str, list] = {}
+    for adm3_pcode, adm2_pcode in poly_rows:
+        bare3 = (adm3_pcode or "").removeprefix("TH")
+        bare2 = (adm2_pcode or "").removeprefix("TH")
+        if bare3:
+            has_own_polygon.add(bare3)
+        if bare2:
+            polys_by_district.setdefault(bare2, []).append(bare3)
+
+    lookup = {}
+    for tambon_code, district_code in tambon_rows:
+        if tambon_code in has_own_polygon:
+            lookup[tambon_code] = tambon_code
+        else:
+            district_polys = polys_by_district.get(district_code, [])
+            if len(district_polys) == 1:
+                lookup[tambon_code] = district_polys[0]
+            # else: ambiguous/unresolvable, leave unmapped (same as before)
+    return lookup
 
 
 def _parse_plain_rows(text: str) -> list[list[str]]:

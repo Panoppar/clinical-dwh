@@ -189,10 +189,7 @@ CREATE TABLE `api_hdc_report_catalog` (
 
   `raw_report_code`          VARCHAR(100),
   `raw_report_name`           VARCHAR(500),
-  `raw_subcatalog_id`          VARCHAR(100),
   `raw_subcatalog_name`         VARCHAR(255),
-  `raw_catalog_label`            VARCHAR(500),
-  `raw_active`                     VARCHAR(10),
   `raw_byear_list`                  VARCHAR(255) COMMENT 'Comma-separated list of fiscal years this report currently exposes'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

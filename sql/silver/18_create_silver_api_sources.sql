@@ -5,20 +5,24 @@
 -- columns to real types and normalizes BE->CE years; dimension resolution
 -- against gold.dim_geography/dim_factory/etc. stays a Gold concern, same
 -- as every other Silver table in this project.
+--
+-- INCREMENTAL (migrated 2026-11-03): these tables are CREATE TABLE IF NOT
+-- EXISTS, not DROP+CREATE -- a full refresh here would wipe every row_hash
+-- a prior run already saw, making every subsequent run look like a first
+-- run again (reprocessing all of Bronze, defeating the entire point of
+-- delta detection). row_hash + ingestion_batch_id are part of the base
+-- schema now, not a later ALTER TABLE patch -- see
+-- pipeline/transform_silver_api_{nso,bma,diw,dds,hdc}_incremental.py for
+-- how they're populated (deterministic hash of business columns, used to
+-- skip rows already seen; batch id used by Gold's high-water mark filter).
 -- ============================================================================
 
 USE silver;
 
-DROP TABLE IF EXISTS `api_nso_income`;
-DROP TABLE IF EXISTS `api_bma_community`;
-DROP TABLE IF EXISTS `api_diw_factory`;
-DROP TABLE IF EXISTS `api_dds_disease_ranking`;
-DROP TABLE IF EXISTS `api_hdc_observations`;
-
 -- ----------------------------------------------------------------------------
 -- api_nso_income (from bronze.api_nso_income, 15,400 rows)
 -- ----------------------------------------------------------------------------
-CREATE TABLE `api_nso_income` (
+CREATE TABLE IF NOT EXISTS `api_nso_income` (
     `silver_id`         BIGINT AUTO_INCREMENT PRIMARY KEY,
     `year_be`           SMALLINT     NOT NULL,
     `year_ce`           SMALLINT     NOT NULL,
@@ -32,13 +36,17 @@ CREATE TABLE `api_nso_income` (
     `unit`              VARCHAR(100),
     `attribute_note`    VARCHAR(500) COMMENT 'NSO''s own footnote text, e.g. superscript-W marker meaning "0 from a small survey sample"',
     `source_agency`     VARCHAR(255),
-    KEY `ix_ani_province_year` (`province`, `year_ce`)
+    `row_hash`           VARCHAR(16),
+    `ingestion_batch_id` VARCHAR(100),
+    KEY `ix_ani_province_year` (`province`, `year_ce`),
+    KEY `ix_ani_row_hash` (`row_hash`),
+    KEY `ix_ani_batch_id` (`ingestion_batch_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------
 -- api_bma_community (from bronze.api_bma_community, 6,027 rows)
 -- ----------------------------------------------------------------------------
-CREATE TABLE `api_bma_community` (
+CREATE TABLE IF NOT EXISTS `api_bma_community` (
     `silver_id`             BIGINT AUTO_INCREMENT PRIMARY KEY,
     `fiscal_year_be`        SMALLINT     NOT NULL,
     `fiscal_year_ce`        SMALLINT     NOT NULL,
@@ -49,7 +57,11 @@ CREATE TABLE `api_bma_community` (
     `population`            INT,
     `male`                  INT,
     `female`                INT,
-    KEY `ix_abc_district_year` (`district`, `fiscal_year_ce`)
+    `row_hash`              VARCHAR(16),
+    `ingestion_batch_id`    VARCHAR(100),
+    KEY `ix_abc_district_year` (`district`, `fiscal_year_ce`),
+    KEY `ix_abc_row_hash` (`row_hash`),
+    KEY `ix_abc_batch_id` (`ingestion_batch_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------
@@ -57,7 +69,7 @@ CREATE TABLE `api_bma_community` (
 -- PII exclusion carries through from Bronze -- operator_name/phone were
 -- never landed there, so there is nothing to cleanse or drop here either.
 -- ----------------------------------------------------------------------------
-CREATE TABLE `api_diw_factory` (
+CREATE TABLE IF NOT EXISTS `api_diw_factory` (
     `silver_id`             BIGINT AUTO_INCREMENT PRIMARY KEY,
     `reg_no`                VARCHAR(100) NOT NULL,
     `factory_name`          VARCHAR(500),
@@ -76,17 +88,23 @@ CREATE TABLE `api_diw_factory` (
     `horsepower`            DECIMAL(12,2),
     `tsic`                  VARCHAR(100),
     `old_reg_no`            VARCHAR(100),
+    `row_hash`              VARCHAR(16),
+    `ingestion_batch_id`    VARCHAR(100),
     KEY `ix_adf_province_amphoe` (`province`, `amphoe`),
-    KEY `ix_adf_reg_no` (`reg_no`)
+    KEY `ix_adf_reg_no` (`reg_no`),
+    KEY `ix_adf_row_hash` (`row_hash`),
+    KEY `ix_adf_batch_id` (`ingestion_batch_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------
 -- api_dds_disease_ranking (from bronze.api_dds_disease_ranking -- 0 rows as
 -- of this build; DDS's own backend has been down since 2026-10-25, see
 -- docs/03_external_reference_sources.md. Transform is written and ready,
--- just unverified against real data until DDS recovers.)
+-- just unverified against real data until DDS recovers. See also
+-- dds_health_region_disease_report (sql/silver/22) for the health-region-
+-- grain PDF archive used as a stand-in while this stays empty.)
 -- ----------------------------------------------------------------------------
-CREATE TABLE `api_dds_disease_ranking` (
+CREATE TABLE IF NOT EXISTS `api_dds_disease_ranking` (
     `silver_id`             BIGINT AUTO_INCREMENT PRIMARY KEY,
     `year_ce`               SMALLINT     NOT NULL,
     `province_code`         VARCHAR(10)  NOT NULL,
@@ -97,7 +115,11 @@ CREATE TABLE `api_dds_disease_ranking` (
     `ipd_count`             DECIMAL(14,2),
     `death_count`           DECIMAL(14,2),
     `case_fatality_pct`     DECIMAL(8,4),
-    KEY `ix_addr_province_year` (`province_code`, `year_ce`)
+    `row_hash`              VARCHAR(16),
+    `ingestion_batch_id`    VARCHAR(100),
+    KEY `ix_addr_province_year` (`province_code`, `year_ce`),
+    KEY `ix_addr_row_hash` (`row_hash`),
+    KEY `ix_addr_batch_id` (`ingestion_batch_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------
@@ -108,7 +130,7 @@ CREATE TABLE `api_dds_disease_ranking` (
 -- report in Gold, not here. Silver's job is resolving report_name (joined
 -- from the catalog) and BE->CE year, not typing every value.
 -- ----------------------------------------------------------------------------
-CREATE TABLE `api_hdc_observations` (
+CREATE TABLE IF NOT EXISTS `api_hdc_observations` (
     `silver_id`         BIGINT AUTO_INCREMENT PRIMARY KEY,
     `report_code`       VARCHAR(100) NOT NULL,
     `report_name`       VARCHAR(500),
@@ -118,6 +140,10 @@ CREATE TABLE `api_hdc_observations` (
     `record_index`      INT          NOT NULL,
     `field_name`        VARCHAR(255) NOT NULL,
     `field_value`       VARCHAR(1000) COMMENT 'kept as text -- cast per-report in Gold, mirrors silver.hdc_indicator_observations',
+    `row_hash`           VARCHAR(16),
+    `ingestion_batch_id` VARCHAR(100),
     KEY `ix_aho_report_year` (`report_code`, `year_ce`),
-    KEY `ix_aho_field` (`field_name`)
+    KEY `ix_aho_field` (`field_name`),
+    KEY `ix_aho_row_hash` (`row_hash`),
+    KEY `ix_aho_batch_id` (`ingestion_batch_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

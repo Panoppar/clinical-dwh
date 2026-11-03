@@ -87,16 +87,14 @@ def _load_district(conn, batch_id: str) -> int:
         "INSERT INTO geo_boundary_district "
         "(source_folder, source_file_name, source_row_number, file_hash, ingestion_batch_id, "
         "raw_tis1099_district_code, raw_parent_province_tis1099_code, raw_name_en, raw_name_th, "
-        "raw_centroid_lat, raw_centroid_lon, raw_area_km2, raw_bbox_minlat, raw_bbox_minlon, "
-        "raw_bbox_maxlat, raw_bbox_maxlon, raw_num_tambon, raw_postal_code_prefixes, raw_notes) "
-        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+        "raw_centroid_lat, raw_centroid_lon, raw_area_km2, raw_num_tambon, raw_postal_code_prefixes) "
+        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
     )
     rows = [
         ("geo_boundary", key, i, file_hash, batch_id,
          r["tis1099_district_code"], r["parent_province_tis1099_code"], r["name_en"], r["name_th"],
          r["centroid_lat"] or None, r["centroid_lon"] or None, r["area_km2"] or None,
-         r["bbox_minlat"] or None, r["bbox_minlon"] or None, r["bbox_maxlat"] or None, r["bbox_maxlon"] or None,
-         r["num_tambon"] or None, r["postal_code_prefixes"] or None, r["notes"] or None)
+         r["num_tambon"] or None, r["postal_code_prefixes"] or None)
         for i, r in enumerate(reader, start=1)
     ]
     with conn.cursor() as cur:
@@ -116,16 +114,15 @@ def _load_polygon(conn, batch_id: str) -> int:
     insert_sql = (
         "INSERT INTO geo_boundary_polygon "
         "(source_folder, source_file_name, source_row_number, file_hash, ingestion_batch_id, "
-        "raw_adm3_pcode, raw_adm3_en, raw_adm3_th, raw_adm2_pcode, raw_adm1_pcode, raw_geometry_geojson) "
-        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+        "raw_adm3_pcode, raw_adm3_en, raw_adm3_th, raw_adm2_pcode, raw_geometry_geojson) "
+        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
     )
     rows = []
     for i, feat in enumerate(features, start=1):
         props = feat.get("properties", {})
         rows.append((
             "geo_boundary", key, i, file_hash, batch_id,
-            props.get("ADM3_PCODE"), props.get("ADM3_EN"), props.get("ADM3_TH"),
-            props.get("ADM2_PCODE"), props.get("ADM1_PCODE"),
+            props.get("ADM3_PCODE"), props.get("ADM3_EN"), props.get("ADM3_TH"), props.get("ADM2_PCODE"),
             json.dumps(feat.get("geometry")),
         ))
     with conn.cursor() as cur:

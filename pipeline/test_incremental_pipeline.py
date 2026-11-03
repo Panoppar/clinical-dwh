@@ -61,18 +61,19 @@ def test_delta_detection():
     silver_conn = _connect("silver")
 
     # Scenario: Same row lands twice (e.g., re-transmission)
-    row_data = ("NL9idjvw", 2025, "zone1", "1", "target", "500")
+    row_data = ("__TEST_REPORT__", 2025, "zone1", "1", "target", "500")
     hash_val = _row_hash(*row_data)
 
-    # Simulate first insert
+    # Simulate first insert -- year_be and report_name are NOT NULL /
+    # present in the real schema and must be supplied.
     with silver_conn.cursor() as cur:
         cur.execute(
             """
             INSERT INTO api_hdc_observations
-            (report_code, year_ce, zone, record_index, field_name, field_value, row_hash, ingestion_batch_id)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+            (report_code, report_name, year_be, year_ce, zone, record_index, field_name, field_value, row_hash, ingestion_batch_id)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """,
-            ("NL9idjvw", 2025, "zone1", "1", "target", "500", hash_val, "api_hdc_load_20261026T145630")
+            ("__TEST_REPORT__", "Test Report", 2025 + 543, 2025, "zone1", "1", "target", "500", hash_val, "api_hdc_load_20261026T145630")
         )
     silver_conn.commit()
 
@@ -99,17 +100,39 @@ def test_delta_detection():
 
 
 def test_upstream_correction_via_merge():
-    """Test 3: MERGE statement handles upstream corrections (update on key match)."""
+    """Test 3: MERGE statement handles upstream corrections (update on key match).
+
+    fact_hdc_observation's real grain is (report_key, date_key, zone,
+    record_index) -- report_key/date_key are FKs into dim_hdc_report/
+    dim_date, not text columns, so this test resolves a real report_key and
+    date_key dynamically rather than assuming values exist."""
     print("\n=== TEST 3: Upstream Correction via MERGE ===")
 
     gold_conn = _connect("gold")
 
-    # Scenario: HDC publishes corrected data (same business key, different value)
+    with gold_conn.cursor() as cur:
+        cur.execute("SELECT report_key FROM dim_hdc_report LIMIT 1")
+        row = cur.fetchone()
+        if row is None:
+            print("SKIPPED: dim_hdc_report is empty (run transform_gold_dimensions first)")
+            gold_conn.close()
+            return
+        report_key = row[0]
 
-    # Step 1: Insert original fact
+        cur.execute("SELECT date_key FROM dim_date LIMIT 1")
+        row = cur.fetchone()
+        if row is None:
+            print("SKIPPED: dim_date is empty (run transform_gold_dimensions first)")
+            gold_conn.close()
+            return
+        date_key = row[0]
+
+    test_zone, test_record_index = "T9", 999999  # unlikely to collide with real HDC data
+
+    # Scenario: HDC publishes corrected data (same business key, different value)
     merge_sql = """
         INSERT INTO fact_hdc_observation
-        (report_code, year_ce, zone, record_index, target, ingestion_batch_id)
+        (report_key, date_key, zone, record_index, target, ingestion_batch_id)
         VALUES (%s,%s,%s,%s,%s,%s)
         ON DUPLICATE KEY UPDATE
             target = VALUES(target),
@@ -119,14 +142,14 @@ def test_upstream_correction_via_merge():
     with gold_conn.cursor() as cur:
         cur.execute(
             merge_sql,
-            ("NL9idjvw", 2025, "zone1", "1", 500, "api_hdc_load_20261026T145630")
+            (report_key, date_key, test_zone, test_record_index, 500, "api_hdc_load_20261026T145630")
         )
     gold_conn.commit()
 
     with gold_conn.cursor() as cur:
         cur.execute(
-            "SELECT target FROM fact_hdc_observation WHERE report_code=%s AND year_ce=%s AND zone=%s AND record_index=%s",
-            ("NL9idjvw", 2025, "zone1", "1")
+            "SELECT target FROM fact_hdc_observation WHERE report_key=%s AND date_key=%s AND zone=%s AND record_index=%s",
+            (report_key, date_key, test_zone, test_record_index)
         )
         result = cur.fetchone()
 
@@ -137,14 +160,14 @@ def test_upstream_correction_via_merge():
     with gold_conn.cursor() as cur:
         cur.execute(
             merge_sql,
-            ("NL9idjvw", 2025, "zone1", "1", 510, "api_hdc_load_20261027T090000")
+            (report_key, date_key, test_zone, test_record_index, 510, "api_hdc_load_20261027T090000")
         )
     gold_conn.commit()
 
     with gold_conn.cursor() as cur:
         cur.execute(
-            "SELECT target, ingestion_batch_id FROM fact_hdc_observation WHERE report_code=%s AND year_ce=%s AND zone=%s AND record_index=%s",
-            ("NL9idjvw", 2025, "zone1", "1")
+            "SELECT target, ingestion_batch_id FROM fact_hdc_observation WHERE report_key=%s AND date_key=%s AND zone=%s AND record_index=%s",
+            (report_key, date_key, test_zone, test_record_index)
         )
         result = cur.fetchone()
 
@@ -155,8 +178,8 @@ def test_upstream_correction_via_merge():
     # Cleanup
     with gold_conn.cursor() as cur:
         cur.execute(
-            "DELETE FROM fact_hdc_observation WHERE report_code=%s AND year_ce=%s AND zone=%s AND record_index=%s",
-            ("NL9idjvw", 2025, "zone1", "1")
+            "DELETE FROM fact_hdc_observation WHERE report_key=%s AND date_key=%s AND zone=%s AND record_index=%s",
+            (report_key, date_key, test_zone, test_record_index)
         )
     gold_conn.commit()
     gold_conn.close()

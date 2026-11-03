@@ -23,17 +23,14 @@
 
 USE gold;
 
--- fact_hospital_access (sql/gold/06, created later in GOLD_SCRIPTS order)
--- has a FK into this table -- on a re-run, that table still exists from
--- the previous run and blocks a plain DROP TABLE without this guard
--- (confirmed live: "ERROR 3730 ... referenced by a foreign key
--- constraint 'fk_fha_area'"). Same pattern sql/gold/01 already uses for
--- dim_geography's self-reference.
 SET FOREIGN_KEY_CHECKS = 0;
 
-DROP TABLE IF EXISTS `dim_area`;
-
-CREATE TABLE `dim_area` (
+-- INCREMENTAL (migrated 2026-11-03): CREATE TABLE IF NOT EXISTS, not
+-- DROP+CREATE -- fact_factory now persists across runs via MERGE and
+-- references area_key, so dim_area's surrogate keys must stay stable too.
+-- See pipeline/transform_gold_dimensions.py's _build_dim_area (now
+-- INSERT IGNORE on unit_code, the table's own UNIQUE KEY).
+CREATE TABLE IF NOT EXISTS `dim_area` (
     `area_key`                      INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `unit_code`                     VARCHAR(20)  NOT NULL COMMENT 'TIS-1099 subdistrict code, or parent district code for is_district_level_fallback=1 rows',
     `unit_th`                       VARCHAR(255) NOT NULL,

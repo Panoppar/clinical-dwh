@@ -23,6 +23,13 @@ external-sources/hdc_region6_13/
 external-sources/dds_health_region/
 external-sources/lat_krabang/
 
+# Same DDS redistribution-rights caveat as above, 2026-11-03: skr6/skr13
+# health-region PDF archive (file-based stand-in while the live DDS API
+# stays down), landed under external-inputs/ (not external-sources/,
+# which was the pre-live-API path convention above) but the same
+# never-confirmed-redistribution-rights reasoning applies.
+external-inputs/dds_health_region/
+
 # Province/subdistrict boundary GeoJSON for the Metabase choropleth map
 # (12.6MB combined -- too large for git and fully re-derivable). Source:
 # chingchai/OpenGISData-Thailand (GitHub, public), downloaded with

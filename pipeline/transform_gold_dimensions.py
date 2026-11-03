@@ -9,6 +9,7 @@ dim_area (kmch-ml input-parity gap 1) is a separate catchment-area
 dimension, built from silver.geo_boundary_{subdistrict,district} --
 see sql/gold/04_create_gold_area_dimension.sql for the full design note."""
 
+import hashlib
 import json
 import math
 import os
@@ -41,8 +42,12 @@ def _build_dim_date(silver_conn, gold_conn):
     years.discard(None)
 
     with gold_conn.cursor() as cur:
+        # INSERT IGNORE, not plain INSERT: dim_date's DDL is now CREATE TABLE
+        # IF NOT EXISTS (incremental migration), so this table is no longer
+        # dropped+recreated every run -- a plain INSERT would hit a
+        # duplicate PRIMARY KEY (date_key) error on every year already seen.
         cur.executemany(
-            "INSERT INTO dim_date (date_key, year_ce, year_be) VALUES (%s,%s,%s)",
+            "INSERT IGNORE INTO dim_date (date_key, year_ce, year_be) VALUES (%s,%s,%s)",
             [(y, y, y + 543) for y in sorted(years)],
         )
     gold_conn.commit()
@@ -61,8 +66,30 @@ def _admin_types(province: str) -> tuple[str, str]:
 
 
 def _build_dim_geography(silver_conn, gold_conn):
+    """dim_geography's DDL is CREATE TABLE IF NOT EXISTS (incremental
+    migration), so this table is no longer dropped+recreated every run --
+    existing provinces/districts/subdistricts must keep their existing
+    geo_key across runs (facts reference it via FK, and incrementally
+    preserved facts from a prior run would silently point to the wrong
+    place otherwise). province_key/district_key/subdistrict_seen are
+    preloaded from whatever's already in the table before any insert
+    decision is made, so already-seen entities are recognized and reused
+    instead of re-inserted with a new surrogate key."""
     province_key = {}   # province_name -> geo_key
     district_key = {}   # (province_name, district_name) -> geo_key
+    subdistrict_seen = set()  # (province_name, district_name, subdistrict_name)
+
+    with gold_conn.cursor() as cur:
+        cur.execute(
+            "SELECT geo_key, admin_level, province_name, district_name, subdistrict_name FROM dim_geography"
+        )
+        for geo_key, admin_level, province, district, subdistrict in cur.fetchall():
+            if admin_level == "province":
+                province_key[province] = geo_key
+            elif admin_level == "district":
+                district_key[(province, district)] = geo_key
+            elif admin_level == "subdistrict":
+                subdistrict_seen.add((province, district, subdistrict))
 
     def _get_or_create_province(cur, name, sources):
         if name in province_key:
@@ -127,9 +154,10 @@ def _build_dim_geography(silver_conn, gold_conn):
             )
             diw_subdistricts = {(p, a, t) for p, a, t in scur.fetchall()}
 
-        subdistrict_seen = set()
         for district, subdistrict in sorted(bma_subdistricts):
             k = ("กรุงเทพมหานคร", district, subdistrict)
+            if k in subdistrict_seen:
+                continue
             parent = district_key.get(("กรุงเทพมหานคร", district))
             if parent is None:
                 continue
@@ -196,13 +224,22 @@ def _build_dim_hdc_report(bronze_conn, gold_conn):
 
 
 def _build_dim_disease(silver_conn, gold_conn):
+    """Sourced from both DDS endpoints -- the live province-grain API
+    (api_dds_disease_ranking, empty while DDS's backend stays down since
+    2026-10-25) and the health-region-grain PDF archive
+    (dds_health_region_disease_report, used as a stand-in while the live
+    API is down). Same underlying government disease-name vocabulary, so
+    both resolve into the same dim_disease rows via INSERT IGNORE's unique
+    key on disease_name -- no separate dimension needed."""
     with silver_conn.cursor() as scur:
         scur.execute("SELECT DISTINCT disease_name FROM api_dds_disease_ranking WHERE disease_name IS NOT NULL")
-        rows = scur.fetchall()
+        rows = list(scur.fetchall())
+        scur.execute("SELECT DISTINCT disease_name_th FROM dds_health_region_disease_report WHERE disease_name_th IS NOT NULL")
+        rows.extend(scur.fetchall())
     with gold_conn.cursor() as cur:
         cur.executemany("INSERT IGNORE INTO dim_disease (disease_name) VALUES (%s)", rows)
     gold_conn.commit()
-    print(f"[gold_dim] dim_disease: {len(rows)} diseases" + (" (0 expected -- DDS backend down)" if not rows else ""))
+    print(f"[gold_dim] dim_disease: {len(rows)} source rows (live DDS + health-region PDFs, deduplicated by name)")
 
 
 # kmch-ml's own hospital coordinate (Google Maps-verified, confirmed from
@@ -353,84 +390,111 @@ def _geometry_centroid(geometry: dict) -> tuple[float, float]:
 
 
 def _load_boundary_polygons(bronze_conn) -> tuple[dict, dict]:
-    """-> (polygons_by_subdistrict_code, polygons_by_district_code), both
-    keyed by the bare TIS-1099 code (ADM_PCODE with its leading 'TH'
-    stripped). bronze.geo_boundary_polygon is nationwide and unfiltered --
-    see docs/06_kmch_ml_gap_closure_plan.md's Gap 6 note: this is the exact
-    same file kmch-ml's own training export carries, already landed here,
-    not a separate source."""
+    """-> (polygons_by_subdistrict_code, polygons_by_district_code). The
+    subdistrict dict is keyed by the bare TIS-1099 code (ADM3_PCODE with
+    its leading 'TH' stripped) -> {"geometry", "name_th", "name_en"}. The
+    district dict is keyed by the bare ADM2 code -> list of those same
+    entries, one per polygon found under that district (used to detect
+    and resolve Bangkok's post-2019 khwaeng-split merge groups -- see
+    _build_dim_area). bronze.geo_boundary_polygon is nationwide and
+    unfiltered -- see docs/06_kmch_ml_gap_closure_plan.md's Gap 6 note:
+    this is the exact same file kmch-ml's own training export carries,
+    already landed here, not a separate source."""
     with bronze_conn.cursor() as bcur:
         bcur.execute(
-            "SELECT raw_adm3_pcode, raw_adm2_pcode, raw_geometry_geojson FROM geo_boundary_polygon"
+            "SELECT raw_adm3_pcode, raw_adm3_en, raw_adm3_th, raw_adm2_pcode, raw_geometry_geojson "
+            "FROM geo_boundary_polygon"
         )
         rows = bcur.fetchall()
 
     by_subdistrict: dict[str, dict] = {}
     by_district: dict[str, list] = {}
-    for adm3_pcode, adm2_pcode, geom_text in rows:
+    for adm3_pcode, adm3_en, adm3_th, adm2_pcode, geom_text in rows:
         if not geom_text:
             continue
         geometry = json.loads(geom_text)
         bare3 = (adm3_pcode or "").removeprefix("TH")
         bare2 = (adm2_pcode or "").removeprefix("TH")
+        entry = {"geometry": geometry, "adm3_code": bare3, "name_th": adm3_th, "name_en": adm3_en}
         if bare3:
-            by_subdistrict[bare3] = geometry
+            by_subdistrict[bare3] = entry
         if bare2:
-            by_district.setdefault(bare2, []).append(geometry)
+            by_district.setdefault(bare2, []).append(entry)
     return by_subdistrict, by_district
 
 
 def _build_dim_area(bronze_conn, silver_conn, gold_conn):
-    """Grain: one row per catchment unit. Units are grouped by
-    bronze.tambon_xwalk's own unit_code (kmch-ml's authoritative mapping,
-    see docs/06_kmch_ml_gap_closure_plan.md Gap 4) rather than a
-    NULL-centroid heuristic -- an earlier version of this function
-    approximated the grouping from missing centroid data alone, which
-    wrongly left 5 of the 7 Bangkok post-2019 khwaeng-split groups'
-    "anchor" tambon (e.g. 100905) as its own standalone unit instead of
-    merged with its split sibling (100910), inflating the total from
-    kmch-ml's documented 312 to 317. Confirmed fixed: every unit_code in
-    the 3 catchment provinces resolves to exactly one polygon in
-    bronze.geo_boundary_polygon (that source pre-dates the 2019 splits, so
-    a merged group's polygon is simply its pre-split ancestor's own
-    unsplit geometry -- there is never more than one polygon per group).
+    """Grain: one row per catchment unit. Units are grouped by matching
+    each tambon in silver.geo_boundary_subdistrict against
+    bronze.geo_boundary_polygon: if a tambon has its own polygon
+    (ADM3_PCODE match), it's its own unit; if not, it merges into
+    whichever single polygon exists under its parent district (ADM2_PCODE
+    match).
+
+    This replaces an earlier version that read an externally-supplied
+    xwalk_tambon_unit.csv (kmch-ml's own file) for this grouping. Removed
+    2026-11-03: confirmed by direct query that every tambon this file ever
+    needed to merge is exactly the set of tambons with no own polygon AND
+    whose district has exactly one polygon total -- scoped to provinces
+    10/11/24, this pattern occurs for precisely the known 7 Bangkok
+    post-2019 khwaeng-split districts and nowhere else, so it's fully
+    derivable from data already fetched live (geo_boundary_subdistrict +
+    geo_boundary_polygon, both from the same canonical GitHub dataset) --
+    no externally-supplied file needed. An even earlier version tried a
+    NULL-centroid-only heuristic and got this wrong (5 of 7 groups left
+    unmerged, inflating 312 to 317) because "has no centroid" alone can't
+    tell you which other tambon to merge with -- the district-polygon-
+    count check here is what actually answers that.
 
     centroid_lat/lon, area_km2, and contains_kmch_point are all derived
     from that single polygon via a consistent, unified method for every
     row (merged or not) -- not a mix of "Silver's stored point" for
     ordinary units and "something else" for merged ones."""
-    polygons_by_subdistrict, _ = _load_boundary_polygons(bronze_conn)
-
-    with bronze_conn.cursor() as bcur:
-        bcur.execute(
-            "SELECT raw_tambon_code, raw_unit_code, raw_amphoe_code, raw_amphoe_th, raw_province_code "
-            "FROM tambon_xwalk WHERE raw_province_code IN ('10','11','24')"
-        )
-        xwalk_rows = bcur.fetchall()
+    polygons_by_subdistrict, polygons_by_district = _load_boundary_polygons(bronze_conn)
 
     with silver_conn.cursor() as scur:
+        scur.execute(
+            "SELECT subdistrict_code, district_code, province_code FROM geo_boundary_subdistrict "
+            "WHERE province_code IN ('10','11','24')"
+        )
+        tambon_rows = scur.fetchall()
         scur.execute(
             "SELECT district_code, province_code, name_th, name_en FROM geo_boundary_district "
             "WHERE province_code IN ('10','11','24')"
         )
         district_by_code = {d[0]: d for d in scur.fetchall()}
-        scur.execute("SELECT subdistrict_code, name_th FROM geo_boundary_subdistrict")
-        tambon_name_by_code = dict(scur.fetchall())
 
     groups: dict[str, dict] = {}
-    for tambon_code, unit_code, amphoe_code, amphoe_th, province_code in xwalk_rows:
+    ambiguous: list[str] = []
+    for tambon_code, district_code, province_code in tambon_rows:
+        if tambon_code in polygons_by_subdistrict:
+            unit_code = tambon_code
+        else:
+            district_polys = polygons_by_district.get(district_code, [])
+            if len(district_polys) != 1:
+                ambiguous.append(tambon_code)  # genuine data gap, not a resolvable split-merge -- skip
+                continue
+            unit_code = district_polys[0]["adm3_code"]
+
+        d = district_by_code.get(district_code)
+        amphoe_th = d[2] if d else None
         g = groups.setdefault(unit_code, {
-            "members": [], "amphoe_code": amphoe_code, "amphoe_th": amphoe_th, "province_code": province_code,
+            "members": [], "amphoe_code": district_code, "amphoe_th": amphoe_th, "province_code": province_code,
         })
         g["members"].append(tambon_code)
+
+    if ambiguous:
+        print(f"[gold_dim] WARNING: dim_area: {len(ambiguous)} tambon(s) have no own polygon and their "
+              f"district doesn't resolve to exactly one fallback polygon, skipped: {ambiguous}")
 
     rows = []
     skipped = []
     for unit_code, g in groups.items():
-        geometry = polygons_by_subdistrict.get(unit_code)
-        if geometry is None:
+        geometry_entry = polygons_by_subdistrict.get(unit_code)
+        if geometry_entry is None:
             skipped.append(unit_code)
             continue
+        geometry = geometry_entry["geometry"]
 
         members = g["members"]
         n_member = len(members)
@@ -448,7 +512,7 @@ def _build_dim_area(bronze_conn, silver_conn, gold_conn):
         if is_fallback:
             unit_th = f"{amphoe_th} (รวม {n_member} แขวง)"
         else:
-            unit_th = tambon_name_by_code.get(unit_code, amphoe_th)
+            unit_th = geometry_entry.get("name_th") or amphoe_th
 
         dist = _haversine_km(lat, lon, KMCH_LAT, KMCH_LON)
         tier, is_catchment = _catchment_tier(dist, pcode)
@@ -461,8 +525,15 @@ def _build_dim_area(bronze_conn, silver_conn, gold_conn):
     if skipped:
         print(f"[gold_dim] WARNING: dim_area: {len(skipped)} unit(s) have no matching polygon, skipped: {skipped}")
 
+    # INSERT IGNORE, not plain INSERT: dim_area's DDL is CREATE TABLE IF NOT
+    # EXISTS (incremental migration), so this table is no longer dropped+
+    # recreated every run -- a plain INSERT would hit dim_area's own UNIQUE
+    # KEY on unit_code on every unit already seen. IGNORE also keeps each
+    # existing unit's area_key stable, which fact_factory.area_key (and
+    # fact_hospital_access.area_key) depend on across incrementally
+    # preserved fact rows.
     insert_sql = (
-        "INSERT INTO dim_area (unit_code, unit_th, is_district_level_fallback, province_code, province_th, "
+        "INSERT IGNORE INTO dim_area (unit_code, unit_th, is_district_level_fallback, province_code, province_th, "
         "amphoe_code, amphoe_th, amphoe_en, centroid_lat, centroid_lon, dist_to_kmch_km, catchment_tier, "
         "is_catchment, area_km2, contains_kmch_point, n_member, member_codes) "
         "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
@@ -481,22 +552,43 @@ def _build_dim_area(bronze_conn, silver_conn, gold_conn):
           f"(expect exactly 1 -- unit 101104 per kmch-ml's own reference export)")
 
 
-def _build_dim_tambon_unit_xwalk(bronze_conn, gold_conn):
-    """Grain: one row per original TIS-1099 tambon code -- finer than
-    dim_area's merged-unit grain. Must run after _build_dim_area() (FK
-    dependency on dim_area.unit_code)."""
-    with bronze_conn.cursor() as bcur:
-        bcur.execute(
-            "SELECT raw_tambon_code, raw_tambon_th, raw_tambon_en, raw_amphoe_code, raw_amphoe_th, "
-            "raw_postal_code, raw_unit_code, raw_is_split FROM tambon_xwalk "
-            "WHERE raw_province_code IN ('10','11','24')"
+def _build_dim_tambon_unit_xwalk(bronze_conn, silver_conn, gold_conn):
+    """Grain: one row per original TIS-1099 tambon code (within provinces
+    10/11/24) -- finer than dim_area's merged-unit grain. Must run after
+    _build_dim_area() (FK dependency on dim_area.unit_code).
+
+    Derives the same (tambon_code -> unit_code, is_split) mapping
+    _build_dim_area computes, straight from geo_boundary_subdistrict +
+    geo_boundary_polygon -- see that function's docstring for why an
+    externally-supplied xwalk file is no longer needed here."""
+    polygons_by_subdistrict, polygons_by_district = _load_boundary_polygons(bronze_conn)
+
+    with silver_conn.cursor() as scur:
+        scur.execute(
+            "SELECT subdistrict_code, district_code, province_code, name_th, name_en, postal_code "
+            "FROM geo_boundary_subdistrict WHERE province_code IN ('10','11','24')"
         )
-        rows = [
-            (tambon_code, tambon_th, tambon_en, amphoe_code, amphoe_th, postal_code,
-             f"TH{tambon_code}", unit_code, int(is_split == "True"))
-            for tambon_code, tambon_th, tambon_en, amphoe_code, amphoe_th, postal_code, unit_code, is_split
-            in bcur.fetchall()
-        ]
+        tambon_rows = scur.fetchall()
+        scur.execute(
+            "SELECT district_code, name_th FROM geo_boundary_district WHERE province_code IN ('10','11','24')"
+        )
+        amphoe_th_by_code = dict(scur.fetchall())
+
+    rows = []
+    for tambon_code, district_code, province_code, tambon_th, tambon_en, postal_code in tambon_rows:
+        if tambon_code in polygons_by_subdistrict:
+            unit_code, is_split = tambon_code, 0
+        else:
+            district_polys = polygons_by_district.get(district_code, [])
+            if len(district_polys) != 1:
+                continue  # same ambiguous-skip as _build_dim_area
+            unit_code, is_split = district_polys[0]["adm3_code"], 1
+
+        amphoe_th = amphoe_th_by_code.get(district_code)
+        rows.append((
+            tambon_code, tambon_th, tambon_en, district_code, amphoe_th, postal_code,
+            f"TH{tambon_code}", unit_code, is_split,
+        ))
 
     insert_sql = (
         "INSERT INTO dim_tambon_unit_xwalk "
@@ -583,6 +675,45 @@ def _build_dim_bma_zone(bronze_conn, gold_conn):
         print(f"[gold_dim] WARNING: dim_bma_zone: unmatched districts: {unmatched}")
 
 
+def _build_dim_catchment_place(silver_conn, gold_conn):
+    """One row per place from the KMCH catchment places list (file-based,
+    kmch_catchment_places.csv). geo_key resolved via exact (province,
+    district, subdistrict) text match against dim_geography -- confirmed
+    live all 15 distinct location combinations in this source resolve
+    cleanly."""
+    with gold_conn.cursor() as cur:
+        cur.execute("SELECT geo_key, province_name, district_name, subdistrict_name FROM dim_geography")
+        geo_lookup = {(p, d, s): k for k, p, d, s in cur.fetchall()}
+
+    with silver_conn.cursor() as scur:
+        scur.execute(
+            "SELECT category, place_name_th, place_name_en, address, subdistrict, district, province, "
+            "avg_distance_km, avg_travel_time_min, market_tier, market_detail FROM kmch_catchment_places"
+        )
+        silver_rows = scur.fetchall()
+
+    rows = []
+    unmatched = 0
+    for (category, name_th, name_en, address, subdistrict, district, province,
+         dist, travel_time, tier, detail) in silver_rows:
+        geo_key = geo_lookup.get((province, district, subdistrict))
+        if geo_key is None:
+            unmatched += 1
+        place_hash = hashlib.sha256(f"{name_th}|{address}".encode()).hexdigest()[:16]
+        rows.append((category, name_th, name_en, address, geo_key, dist, travel_time, tier, detail, place_hash))
+
+    insert_sql = (
+        "INSERT INTO dim_catchment_place "
+        "(category, place_name_th, place_name_en, address, geo_key, avg_distance_km, avg_travel_time_min, "
+        "market_tier, market_detail, place_hash) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+    )
+    with gold_conn.cursor() as cur:
+        cur.executemany(insert_sql, rows)
+    gold_conn.commit()
+
+    print(f"[gold_dim] dim_catchment_place: {len(rows)} places ({unmatched} unmatched geo)")
+
+
 def run() -> None:
     silver_conn = _connect("silver")
     bronze_conn = _connect("bronze")
@@ -594,9 +725,10 @@ def run() -> None:
     _build_dim_hdc_report(bronze_conn, gold_conn)
     _build_dim_disease(silver_conn, gold_conn)
     _build_dim_area(bronze_conn, silver_conn, gold_conn)
-    _build_dim_tambon_unit_xwalk(bronze_conn, gold_conn)
+    _build_dim_tambon_unit_xwalk(bronze_conn, silver_conn, gold_conn)
     _build_dim_facility(silver_conn, gold_conn)
     _build_dim_bma_zone(bronze_conn, gold_conn)
+    _build_dim_catchment_place(silver_conn, gold_conn)
 
     silver_conn.close()
     bronze_conn.close()

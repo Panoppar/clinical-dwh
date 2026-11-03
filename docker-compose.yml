@@ -63,7 +63,17 @@ services:
       - warehouse_db_data:/var/lib/mysql
       # Bootstraps empty bronze/silver/gold schemas + grants on first boot
       - ./sql/00_init_schemas_and_grants.sql:/docker-entrypoint-initdb.d/00_init_schemas_and_grants.sql:ro
-    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    # binlog_expire_logs_seconds=259200 (3 days): binary logging is on by
+    # default with no purge policy, and this project's full-refresh pipeline
+    # design (every table drop+recreate+reload, every run) generates a new
+    # binlog segment every single run -- confirmed live this accumulated to
+    # 47GB+ (69 files) across this session's repeated runs, versus the
+    # warehouse's actual bronze+silver+gold data footprint of ~266MB. Not
+    # disabled outright (binlog_expire_logs_seconds requires logging to stay
+    # on) in case point-in-time recovery or replication is wanted later --
+    # backups today go through mysqldump, not binlog replay, so 3 days is
+    # just a safety margin, not a real recovery-window requirement.
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --binlog_expire_logs_seconds=259200
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DWH_DB_ROOT_PASSWORD}"]
       interval: 5s

@@ -1,7 +1,7 @@
 """Builds gold's 3 dashboard-feeding aggregate tables + the Level-3
 composite index table, from the fact tables (must run after
-transform_gold_facts.py). Column-to-KPI mapping matches the Dashboard
-Design tab in KPI_Tree_and_Dashboard_Design.xlsx.
+transform_gold_all_sources_incremental.py). Column-to-KPI mapping matches
+the Dashboard Design tab in KPI_Tree_and_Dashboard_Design.xlsx.
 
 Composite indices (K-STR-01/02/03) use simple min-max normalization to a
 0-100 scale with equal weighting across components -- a transparent,

@@ -1,6 +1,7 @@
 """Lands the BMA zone-district mapping into the landing zone. File-based,
-not a live API -- a deliberate, scoped exception, same pattern as
-bronze.tambon_xwalk (see sql/bronze/17's header for why).
+not a live API -- a deliberate, scoped exception, same pattern as the
+DOPA population supplement (bronze.dopa_population_supplement, see
+sql/bronze/17's header for why).
 """
 
 import os

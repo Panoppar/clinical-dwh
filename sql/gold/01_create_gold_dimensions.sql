@@ -18,13 +18,16 @@ USE gold;
 
 SET FOREIGN_KEY_CHECKS = 0;
 
-DROP TABLE IF EXISTS `dim_date`;
-DROP TABLE IF EXISTS `dim_geography`;
-DROP TABLE IF EXISTS `dim_industry`;
-DROP TABLE IF EXISTS `dim_hdc_report`;
-DROP TABLE IF EXISTS `dim_disease`;
+-- INCREMENTAL (migrated 2026-11-03): CREATE TABLE IF NOT EXISTS, not
+-- DROP+CREATE. Facts (sql/gold/02) now persist across runs via MERGE, so
+-- dimensions must too -- a DROP+CREATE here would reset every AUTO_
+-- INCREMENT surrogate key (geo_key, disease_key, etc.), silently pointing
+-- every already-preserved fact row at the wrong dimension row on the next
+-- run. See pipeline/transform_gold_dimensions.py's _build_dim_date/
+-- _build_dim_geography for how each table's population logic was made
+-- idempotent to match (existing rows preloaded and reused, not re-created).
 
-CREATE TABLE `dim_date` (
+CREATE TABLE IF NOT EXISTS `dim_date` (
     `date_key`   INT UNSIGNED PRIMARY KEY COMMENT 'year_ce, e.g. 2025',
     `year_ce`    SMALLINT NOT NULL,
     `year_be`    SMALLINT NOT NULL
@@ -40,7 +43,7 @@ CREATE TABLE `dim_date` (
 -- เขต/แขวง, every other province means อำเภอ/ตำบล. NULL at admin levels
 -- where the corresponding _name column is also NULL (province level has
 -- no district_type; district level has no subdistrict_type).
-CREATE TABLE `dim_geography` (
+CREATE TABLE IF NOT EXISTS `dim_geography` (
     `geo_key`           INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `admin_level`       VARCHAR(12)  NOT NULL COMMENT 'province | district | subdistrict',
     `province_name`     VARCHAR(150) NOT NULL,
@@ -57,7 +60,7 @@ CREATE TABLE `dim_geography` (
     CONSTRAINT `fk_dg_parent` FOREIGN KEY (`parent_geo_key`) REFERENCES `dim_geography` (`geo_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE `dim_industry` (
+CREATE TABLE IF NOT EXISTS `dim_industry` (
     `industry_key`       INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `tsic_code`           VARCHAR(20),
     `factory_type_code`    VARCHAR(20),
@@ -67,7 +70,7 @@ CREATE TABLE `dim_industry` (
 -- From bronze.api_hdc_report_catalog -- reference data, not a Silver fact,
 -- promoted straight to Gold since Silver's HDC tables already resolve
 -- report_name via this same catalog (see transform_silver_api_hdc.py).
-CREATE TABLE `dim_hdc_report` (
+CREATE TABLE IF NOT EXISTS `dim_hdc_report` (
     `report_key`          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `report_code`          VARCHAR(100) NOT NULL,
     `report_name`           VARCHAR(500),
@@ -79,7 +82,7 @@ CREATE TABLE `dim_hdc_report` (
 -- From silver.api_dds_disease_ranking (0 rows as of this build -- DDS's
 -- backend has been down since 2026-10-25). Structurally ready; populates
 -- once that source recovers.
-CREATE TABLE `dim_disease` (
+CREATE TABLE IF NOT EXISTS `dim_disease` (
     `disease_key`   INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `disease_name`   VARCHAR(500) NOT NULL,
     UNIQUE KEY `ux_dd_name` (`disease_name`)
