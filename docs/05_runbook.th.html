@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="th"><head><meta charset="UTF-8"><title>clinical-dwh — คู่มือการติดตั้งใช้งาน (Runbook)</title>
+<style>
+:root {
+  --bronze: #CD7F32; --silver: #9DA3A8; --gold: #D4AF37;
+  --ink: #1a1a2e; --muted: #5a6472; --bg: #fafbfc; --card: #ffffff;
+  --border: #e2e5ea; --accent: #2E75B6; --warn: #C00000; --ok: #2e7d32;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', 'Sarabun', -apple-system, Roboto, sans-serif; background: var(--bg); color: var(--ink);
+       margin: 0; padding: 0; line-height: 1.7; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 32px 24px 80px; }
+header.page { background: linear-gradient(135deg, #1a1a2e 0%, #2E75B6 100%); color: #fff; padding: 40px 24px; }
+header.page h1 { margin: 0 0 8px; font-size: 1.9rem; }
+header.page .sub { opacity: .88; font-size: .98rem; max-width: 900px; }
+header.page .meta { margin-top: 14px; font-size: .85rem; opacity: .75; }
+nav.toc { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; margin: 24px 0; }
+nav.toc a { color: var(--accent); text-decoration: none; margin-right: 18px; font-size: .92rem; }
+nav.toc a:hover { text-decoration: underline; }
+h2.section { font-size: 1.4rem; margin-top: 44px; padding-bottom: 8px; border-bottom: 3px solid var(--accent); }
+h2.section.bronze { border-color: var(--bronze); } h2.section.silver { border-color: var(--silver); }
+h2.section.gold { border-color: var(--gold); }
+h3.table-title { font-size: 1.08rem; margin: 28px 0 4px; display: flex; align-items: center; gap: 10px; }
+.badge { display: inline-block; font-size: .72rem; font-weight: 600; padding: 2px 9px; border-radius: 999px; color: #fff; }
+.badge.bronze { background: var(--bronze); } .badge.silver { background: #6b7280; } .badge.gold { background: #b8860b; }
+.badge.pending { background: var(--warn); } .badge.ok { background: var(--ok); }
+.rowcount { font-size: .85rem; color: var(--muted); font-weight: 500; }
+p.table-desc { color: var(--muted); margin: 4px 0 10px; font-size: .93rem; max-width: 900px; }
+table.cols { width: 100%; border-collapse: collapse; margin-bottom: 8px; background: var(--card);
+             border: 1px solid var(--border); border-radius: 8px; overflow: hidden; font-size: .87rem; }
+table.cols th { background: #f1f3f6; text-align: left; padding: 9px 12px; font-weight: 600; color: var(--muted);
+                 font-size: .78rem; letter-spacing: .02em; }
+table.cols td { padding: 8px 12px; border-top: 1px solid var(--border); vertical-align: top; }
+table.cols tr:nth-child(even) td { background: #fbfbfd; }
+code { background: #eef0f3; padding: 1px 6px; border-radius: 4px; font-size: .85em; color: #333; }
+.callout { border-left: 4px solid var(--accent); background: #eef5fc; padding: 12px 16px; margin: 16px 0; border-radius: 0 8px 8px 0; font-size: .92rem; }
+.callout.warn { border-color: var(--warn); background: #fdecec; }
+.callout.ok { border-color: var(--ok); background: #eaf6ea; }
+.svcgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 20px 0; }
+.svc { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+.svc h4 { margin: 0 0 6px; font-size: .96rem; }
+.svc p { margin: 0; font-size: .85rem; color: var(--muted); }
+footer.page { text-align: center; color: var(--muted); font-size: .8rem; padding: 30px 0; }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 800px) { .two-col { grid-template-columns: 1fr; } }
+ol.steps { counter-reset: step; list-style: none; padding: 0; margin: 18px 0; }
+ol.steps > li { counter-increment: step; position: relative; padding: 4px 0 18px 42px; border-left: 2px solid var(--border); margin-left: 15px; }
+ol.steps > li:last-child { border-left: 2px solid transparent; padding-bottom: 0; }
+ol.steps > li::before { content: counter(step); position: absolute; left: -15px; top: 2px; width: 28px; height: 28px;
+  background: var(--accent); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: .82rem; font-weight: 700; }
+ol.steps h4 { margin: 0 0 6px; font-size: 1rem; }
+pre { background: #1a1a2e; color: #e8eaf0; padding: 14px 16px; border-radius: 8px; overflow-x: auto; font-size: .84rem; line-height: 1.5; font-family: Consolas, monospace; }
+pre code { background: none; color: inherit; padding: 0; }
+table.checklist td:first-child { width: 28px; text-align: center; }
+.lang-note { font-size: .82rem; color: var(--muted); font-style: italic; }
+</style></head><body>
+<header class="page"><div class="wrap" style="padding:0">
+<h1>คู่มือการติดตั้งใช้งาน (Runbook)</h1>
+<div class="sub">วิธีติดตั้งคลังข้อมูล (data warehouse) นี้ตั้งแต่เริ่มต้น: การตั้งค่าครั้งแรก การตรวจสอบผลลัพธ์ การเตรียม Metabase
+งานประจำวัน การแก้ไขปัญหาที่พบบ่อย และการรีเซ็ตทั้งหมด — แปลและปรับจาก <code>05_runbook.html</code> (ฉบับภาษาอังกฤษ)
+ให้ตรงกับสถานะล่าสุดของโครงการ (อัปเดต 2026-11-04: ขยายช่วงข้อมูลประชากร DOPA เป็น 9 ปี, เพิ่มเขตการจ้างงานจังหวัดสมุทรปราการ/ฉะเชิงเทรา)</div>
+<div class="meta">clinical-dwh &middot; ภาษาไทย &middot; สร้าง 2026-11-04</div>
+</div></header>
+<div class="wrap">
+<nav class="toc"><strong>ไปที่:</strong> <a href="#prereq">ข้อกำหนดเบื้องต้น</a><a href="#firstrun">ติดตั้งครั้งแรก</a>
+<a href="#verify">ตรวจสอบผลลัพธ์</a><a href="#metabase">ตั้งค่า Metabase</a><a href="#ml">โครงการ ML ที่เกี่ยวข้อง</a>
+<a href="#day2">งานประจำวัน</a><a href="#troubleshooting">แก้ไขปัญหา</a><a href="#reset">รีเซ็ตทั้งหมด</a></nav>
+
+<div class="callout"><strong>เกี่ยวกับเอกสารนี้:</strong> นี่คือคู่มือสำหรับติดตั้งและทดสอบใช้งานคลังข้อมูล <code>clinical-dwh</code>
+บนเครื่องของคุณเอง (local deploy) เอกสารฉบับสมบูรณ์ภาษาอังกฤษพร้อมรายละเอียดเชิงเทคนิคเพิ่มเติมอยู่ที่
+<code>docs/05_runbook.html</code> และสถาปัตยกรรม/แผนผังข้อมูลอยู่ที่ <code>docs/01_architecture.html</code> และ
+<code>docs/02_data_dictionary.html</code></div>
+
+<h2 class="section gold" id="prereq">ข้อกำหนดเบื้องต้น</h2>
+<ul>
+<li>Docker Engine พร้อม Compose v2 (แนะนำ Docker Desktop สำหรับใช้งานบนเครื่อง Windows/Mac)</li>
+<li>การเชื่อมต่ออินเทอร์เน็ตขาออก ไปยังแหล่งข้อมูลสด (live API) หลายแห่ง ได้แก่ NSO, BMA, DIW, HDC, DOPA, DOE
+(กรมการจัดหางาน), GitHub (ข้อมูลขอบเขตเขตปกครอง), <code>router.project-osrm.org</code> — ส่วน DDS และ Overpass/OSM
+ปัจจุบันถูกบล็อกจากฝั่งต้นทางเอง (ดูหัวข้อแก้ไขปัญหา) ไม่ใช่ปัญหาจากโค้ดนี้ — <strong>ไปป์ไลน์นี้ไม่มีโหมดออฟไลน์</strong></li>
+<li>ไฟล์ข้อมูลพื้นฐาน 4 ไฟล์ภายใต้ <code>external-inputs/</code> (ตารางโยงตำบล, ข้อมูลประชากร DOPA สำรอง 2 ไฟล์,
+ข้อมูลใบอนุญาตแรงงานต่างด้าว BMA) — ไฟล์เหล่านี้ mount เข้าคอนเทนเนอร์โดยตรง ไม่ได้ฝังอยู่ใน image จึงแก้ไขได้โดยไม่ต้อง build ใหม่</li>
+<li>Python 3 พร้อม <code>pymysql</code> บนเครื่อง host เฉพาะกรณีต้องการสร้างเอกสารชุดนี้ใหม่ (dump schema จาก
+<code>information_schema</code>)</li>
+</ul>
+
+<h2 class="section gold" id="firstrun">การติดตั้งครั้งแรก</h2>
+<ol class="steps">
+<li><h4>คัดลอกไฟล์และตั้งค่าตัวแปรสภาพแวดล้อม</h4>
+<pre><code>Copy-Item .env.example .env
+Copy-Item seaweedfs_s3_config.json.example seaweedfs_s3_config.json
+# แก้ไขทั้งสองไฟล์: เปลี่ยนรหัสผ่านทุกตัวที่เป็น ChangeMe_*
+# คู่ access/secret key ต้องตรงกันระหว่างสองไฟล์นี้ --
+# .env ถูกอ่านโดย elt-runner; seaweedfs_s3_config.json ถูกอ่านโดยตรงจากตัว SeaweedFS เอง
+# (ไม่ได้แทรกค่าจาก .env ให้อัตโนมัติ ต้องแก้ไขทั้งสองไฟล์ด้วยค่าที่ตรงกัน)</code></pre></li>
+
+<li><h4>เปิดใช้งานโครงสร้างพื้นฐาน (infrastructure)</h4>
+<pre><code>docker compose up -d warehouse-db landing-zone metabase
+docker compose ps   # รอจน warehouse-db และ landing-zone แสดงสถานะ "healthy"</code></pre></li>
+
+<li><h4>Build และรันไปป์ไลน์</h4>
+<pre><code>docker compose build elt-runner
+docker compose run --rm elt-runner</code></pre>
+<p class="table-desc">เป็น batch job แบบรันครั้งเดียว ทำการรีเฟรชข้อมูลครบทั้ง Bronze -&gt; Silver -&gt; Gold ทุกครั้งที่รัน
+(idempotent — รันซ้ำได้ผลลัพธ์เดิม) ดึงข้อมูลจากแหล่งสด (live API) ทั้งหมด รวมถึงข้อมูลประชากร DOPA ย้อนหลัง
+<strong>9 ปี</strong> (พ.ศ. 2560–2568) และรายงานใบอนุญาตแรงงานต่างด้าวจากกรมการจัดหางาน (DOE) ซึ่งครอบคลุมทั้งกรุงเทพมหานคร
+(10 เขตพื้นที่) และจังหวัดสมุทรปราการ/ฉะเชิงเทรา (ระดับจังหวัด) การครอว์ลข้อมูล HDC ทั้งหมด (119 รายงาน) เป็นขั้นตอนที่ใช้เวลานานที่สุด
+โดยทั่วไป 10-20 นาที (จำกัดความเร็วการเรียก API โดยตั้งใจ) — สังเกตบรรทัด <code>[ingest_api_hdc] (N/119)...</code>
+ที่เพิ่มขึ้นเรื่อย ๆ ถือเป็นเรื่องปกติ ไม่ใช่การค้าง (hang) แหล่งข้อมูลที่ล่ม (DDS, OSM — ยืนยันแล้วว่าถูกบล็อกจากต้นทาง)
+จะบันทึกคำเตือนและไปป์ไลน์จะทำงานต่อไป <strong>ไม่หยุดการติดตั้งทั้งหมด</strong></p></li>
+</ol>
+
+<h2 class="section gold" id="verify">ตรวจสอบผลลัพธ์การติดตั้ง</h2>
+<p>เมื่อไปป์ไลน์ทำงานสำเร็จจะพิมพ์สรุปจำนวนแถวของแต่ละตาราง ค่าประมาณที่ควรพบ (baseline 2026-11-04):</p>
+<table class="cols checklist">
+<tr><th></th><th>ตาราง</th><th>จำนวนแถวที่คาดหวัง</th></tr>
+<tr><td>&check;</td><td><code>bronze.api_nso_income</code></td><td>15,400</td></tr>
+<tr><td>&check;</td><td><code>bronze.api_bma_community</code></td><td>6,027</td></tr>
+<tr><td>&check;</td><td><code>bronze.api_diw_factory</code></td><td>13,683</td></tr>
+<tr><td>&#9888;</td><td><code>bronze.api_dds_disease_ranking</code></td><td>0 — ปกติในขณะที่ระบบ DDS ล่มอยู่ (ดูหัวข้อแก้ไขปัญหา)</td></tr>
+<tr><td>&check;</td><td><code>bronze.api_hdc_observations</code></td><td>~163,000+</td></tr>
+<tr><td>&#9888;</td><td><code>bronze.geo_hospital_facility</code></td><td>0 — ปกติในขณะที่ Overpass/OSM ถูกบล็อก (ดูหัวข้อแก้ไขปัญหา)</td></tr>
+<tr><td>&check;</td><td><code>bronze.dopa_population_year</code></td><td>2,758 แถว ครอบคลุม 9 ปี (พ.ศ. 2560–2568)</td></tr>
+<tr><td>&check;</td><td><code>gold.dim_geography</code></td><td>451 (77 จังหวัด + 67 อำเภอ + 307 ตำบล)</td></tr>
+<tr><td>&check;</td><td><code>gold.dim_area</code></td><td>312 หน่วยพื้นที่บริการ (ตรงกับจำนวนที่ kmch-ml ใช้)</td></tr>
+<tr><td>&check;</td><td><code>gold.dim_bma_zone</code></td><td>12 เขต (10 เขตพื้นที่กรุงเทพฯ + สมุทรปราการ + ฉะเชิงเทรา)</td></tr>
+<tr><td>&check;</td><td><code>gold.fact_factory</code></td><td>13,683 (~97% สามารถจับคู่ <code>area_key</code> ได้)</td></tr>
+<tr><td>&check;</td><td><code>gold.fact_population_by_area</code></td><td>2,808</td></tr>
+<tr><td>&check;</td><td><code>gold.fact_migrant_worker_permit</code></td><td>456 (เดือนล่าสุดที่สกัดข้อมูลได้จริง — ดูหมายเหตุด้านล่าง)</td></tr>
+<tr><td>&check;</td><td><code>gold.obt_regional_composite_index</code></td><td>154 (จังหวัด x ปี)</td></tr>
+</table>
+<div class="callout warn"><strong>ข้อจำกัดที่ทราบอยู่แล้ว — รายงานใบอนุญาตแรงงานต่างด้าว (DOE):</strong> ต้นทางข้อมูลเผยแพร่รายงานย้อนหลังเพียง
+~20 เดือน (ไม่ใช่ 10 ปีตามที่ตั้งใจไว้ในตอนแรก — เป็นข้อจำกัดของแหล่งข้อมูลเอง ไม่ใช่โค้ดนี้) และจาก 20 เดือนนั้น
+มีเพียง 2 เดือนล่าสุด (สิงหาคม–กันยายน 2569) ที่ใช้รูปแบบไฟล์ PDF ที่ตัวสกัดข้อมูลปัจจุบันอ่านได้ รายงานที่เก่ากว่านั้นใช้ฟอนต์/การเข้ารหัสที่แตกต่างออกไป
+ซึ่งถูกข้ามอย่างปลอดภัย (มี warning log ชัดเจน) ไม่ทำให้ไปป์ไลน์ล้มเหลว</div>
+<p>ตรวจสอบตัวเลขด้วยตนเองหากมีค่าที่ดูผิดปกติ (ต้องระบุ <code>--default-character-set=utf8mb4</code> เสมอ มิฉะนั้น client ของ
+MySQL จะ default เป็น latin1 และทำให้การเทียบข้อความภาษาไทยผิดเพี้ยนแบบไม่มี error แจ้ง):</p>
+<pre><code>docker compose exec warehouse-db mysql --default-character-set=utf8mb4 -u root -p `
+  -e "SELECT COUNT(*) FROM gold.fact_hdc_observation;"</code></pre>
+
+<h2 class="section gold" id="metabase">ตั้งค่า Metabase</h2>
+<p>คอนเทนเนอร์ Metabase ที่สร้างใหม่จะยังไม่มีบัญชีผู้ดูแลระบบ เปิดครั้งแรกจะเจอหน้าตั้งค่า (setup wizard):</p>
+<div class="two-col">
+<div><h4>วิธีที่ 1 — ใช้หน้าเว็บ (UI wizard)</h4><p class="table-desc">เปิด http://localhost:3000 ทำตามขั้นตอน:
+สร้างบัญชีผู้ดูแล จากนั้นเพิ่มการเชื่อมต่อฐานข้อมูล (MySQL, host <code>warehouse-db</code>, port 3306, database
+<code>gold</code>, user <code>metabase_ro</code>, password = ค่า <code>DWH_METABASE_RO_PASSWORD</code> จาก <code>.env</code>)</p></div>
+<div><h4>วิธีที่ 2 — ใช้ API (เหมาะกับการ automate)</h4><p class="table-desc">ดูขั้นตอนแบบละเอียดในเอกสารภาษาอังกฤษ
+(<code>docs/05_runbook.html</code> หัวข้อ Metabase Bootstrap) ซึ่งมีตัวอย่างสคริปต์ PowerShell ครบถ้วน</p></div>
+</div>
+<div class="callout">มี "Sample Database" (ชุดข้อมูลตัวอย่างของ Metabase เอง) ถูกเพิ่มมาอัตโนมัติตอนตั้งค่า — ลบออกได้เพื่อความสะอาด
+ของพื้นที่ทำงาน ผ่าน <code>DELETE /api/database/1</code></div>
+
+<h2 class="section gold" id="ml">โครงการ ML ที่เกี่ยวข้อง (kmch-ml community-labels)</h2>
+<p>มีโครงการแยกต่างหากชื่อ <strong>ML</strong> (อยู่ที่ <code>C:\Users\PunPun\Desktop\Workspace\KMITL\ML</code>) ที่อ่านข้อมูลจาก
+schema <code>gold</code> ของคลังข้อมูลนี้ แล้วเขียนป้ายกำกับชุมชน (community labels) กลับเข้าไปที่ตาราง
+<code>gold.ml_area_community_type</code> และ <code>gold.ml_area_profile_cluster</code> โครงการนี้ <strong>ต้องรันบนโฮสต์เดียวกัน</strong>
+กับ clinical-dwh เพราะเชื่อมต่อผ่าน Docker network ภายใน (<code>clinical-dwh_cdw-net</code>) ซึ่งถูกสร้างโดย
+<code>docker compose up</code> ของโครงการนี้เท่านั้น ดูรายละเอียดการติดตั้งที่เอกสารภาษาไทยของโครงการ ML
+(<code>ML/docs/01_deploy.th.html</code>)</p>
+
+<h2 class="section gold" id="day2">งานประจำวัน</h2>
+<ul>
+<li><strong>รันไปป์ไลน์ใหม่</strong> ได้ทุกเมื่อ: <code>docker compose run --rm elt-runner</code> — เป็น idempotent
+(landing zone จะข้ามการบันทึกไฟล์ที่เนื้อหาไม่เปลี่ยน แต่ละชั้นข้อมูลจะ drop/create ตารางของตัวเองใหม่ทุกครั้ง)</li>
+<li><strong>Rebuild image ของ elt-runner</strong> หลังแก้โค้ด Python หรือ requirements ใด ๆ:
+<code>docker compose build elt-runner</code> — <strong>สำคัญ:</strong> ไฟล์ <code>pipeline/*.py</code> ถูกฝังเข้า image
+ตอน build (ไม่ใช่ bind-mount แบบไฟล์ SQL) ดังนั้นแก้ไฟล์ Python แล้วต้อง build ใหม่ก่อนรัน ไม่เช่นนั้นการแก้ไขจะไม่มีผลใด ๆ
+(เคยเป็นสาเหตุของบั๊กที่ดูเหมือนแก้แล้วแต่ยังเจอ error เดิมซ้ำในระหว่างพัฒนาโครงการนี้)</li>
+<li><strong>เบราส์ landing zone</strong> ที่ <a href="http://localhost:8888/buckets/landing-zone/">http://localhost:8888/buckets/landing-zone/</a>
+(หน้าเว็บ Filer ของ SeaweedFS เอง — ดูไฟล์แยกตามแหล่งข้อมูล ดาวน์โหลด/อัปโหลดได้โดยตรง)</li>
+</ul>
+
+<h2 class="section gold" id="troubleshooting">การแก้ไขปัญหาที่พบบ่อย</h2>
+<div class="callout warn"><strong>DDS ตอบกลับ error 500 ทุกครั้ง</strong> ตรวจสอบว่ามีคำว่า
+<code>"could not find driver (Connection: pgsql...)"</code> ใน response หรือไม่ — เป็นปัญหาฝั่งเซิร์ฟเวอร์ DDS เอง
+(ไม่มี PostgreSQL driver) ไม่สามารถแก้ไขจากฝั่งนี้ได้ รอแล้วลองรัน <code>ingest_api_dds.run()</code> ใหม่เป็นระยะ</div>
+<div class="callout warn"><strong>NSO ตอบกลับ HTTP 418 (หน้า block)</strong> WAF ของ NSO บล็อก User-Agent เริ่มต้นของ requests/curl
+ตรวจสอบว่า <code>ingest_api_nso.py</code> ยังส่ง <code>User-Agent: Mozilla/5.0 kmch-phase3-nso/1.0</code> อยู่หรือไม่</div>
+<div class="callout warn"><strong>การค้นหาสถานพยาบาลผ่าน OSM ได้ HTTP 406 จากทุก Overpass endpoint</strong>
+ยืนยันแล้วว่า Overpass public instance บล็อก network origin นี้ ไม่เกี่ยวกับโค้ดนี้ — ไม่ส่งผลต่อ <code>dim_facility</code>
+ที่ยังมี KMCH เพียง 1 แถว (เพราะ OSRM คำนวณระยะทางไปยังพิกัด KMCH ตรง ๆ อยู่แล้ว ไม่ต้องรอ OSM)</div>
+<div class="callout"><strong>คอนเทนเนอร์ landing-zone แสดงสถานะ "unhealthy"</strong> healthcheck ของมันถือว่า HTTP response
+ใด ๆ (แม้แต่ 403) เป็น healthy — ถ้าเจอ unhealthy จริง มักเกิดจากไฟล์ <code>seaweedfs_s3_config.json</code> หายไป
+(คัดลอกจาก <code>.example</code> หากยังไม่ได้ทำ)</div>
+<div class="callout"><strong>ไปป์ไลน์ดูเหมือนค้างอยู่ 15-20 นาที</strong> นั่นคือการครอว์ล HDC (119 รายงาน x หลายปี x 2 โซน
+จำกัดความเร็ว 0.6 วินาทีต่อคำขอ) ไม่ใช่การค้าง — สังเกตบรรทัด <code>[ingest_api_hdc] (N/119)...</code> ที่เพิ่มขึ้นเรื่อย ๆ</div>
+
+<h2 class="section gold" id="reset">รีเซ็ตทั้งหมด</h2>
+<pre><code>docker compose down -v   # ลบทั้งคอนเทนเนอร์และ volume -- ข้อมูลที่ landed ไว้, ข้อมูลคลัง, สถานะ Metabase หายทั้งหมด
+docker compose up -d warehouse-db landing-zone metabase
+docker compose run --rm elt-runner
+# จากนั้นทำขั้นตอน "ตั้งค่า Metabase" ใหม่ -- volume ใหม่ = ต้องตั้งค่าใหม่ทั้งหมด</code></pre>
+<div class="callout warn">คำสั่งนี้ลบทุกอย่าง: ทุกไฟล์ที่ landed ไว้ใน SeaweedFS, ทุกแถวข้อมูลใน Bronze/Silver/Gold,
+และ Metabase ทั้งระบบ (บัญชีผู้ดูแล, คำถามที่บันทึกไว้, แดชบอร์ด) ใช้คำสั่งนี้เฉพาะเมื่อต้องการเริ่มต้นใหม่ทั้งหมดจริง ๆ</div>
+
+<footer class="page">แปลและปรับจาก <code>docs/05_runbook.html</code> (ฉบับภาษาอังกฤษ) &middot; สำหรับรายละเอียดเชิงเทคนิคเต็มรูปแบบ
+โปรดอ้างอิงฉบับภาษาอังกฤษและ <code>docs/01_architecture.html</code></footer>
+</div>
+</body></html>

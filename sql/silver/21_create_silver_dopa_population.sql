@@ -1,15 +1,19 @@
 -- ============================================================================
 -- SILVER LAYER — dopa_population_by_unit_year (kmch-ml input-parity gap 1)
 -- Merges bronze.dopa_population_year + bronze.dopa_population_supplement
--- into one typed table, grain (unit_code, year_ce). Confirmed zero
--- overlapping (unit_code, year_be) pairs between the two Bronze tables
--- before this was built -- a clean UNION, not a dedup/reconciliation.
+-- into one typed table, grain (unit_code, year_ce). The two Bronze tables
+-- now overlap on (unit_code, year_be) for 2560-2564 since the live source
+-- was extended to walk back to 2560 for every province -- the transform
+-- resolves this by preferring live ('full') rows and dropping any
+-- supplement row whose (unit_code, year_be) the live source already has.
 --
 -- data_source distinguishes which Bronze table a row came from:
 --   'full'       -- bronze.dopa_population_year: fine/coarse age-sex bands + totals
 --   'total_only' -- bronze.dopa_population_supplement: pop_total only
---                   (backfills the 5 years 2560-2564 missing from the main
---                   file for Samut Prakan/Chachoengsao units specifically)
+--                   (originally backfilled 2560-2564 for Samut Prakan/
+--                   Chachoengsao; now redundant with live for most/all
+--                   rows, kept only as a fallback for any (unit, year) the
+--                   live source happens to be missing)
 -- ============================================================================
 
 USE silver;

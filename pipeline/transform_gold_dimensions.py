@@ -729,13 +729,27 @@ def _build_dim_facility(silver_conn, gold_conn):
     print(f"[gold_dim] dim_facility: 1 KMCH + {len(rows)} OSM-discovered facilities")
 
 
+# kmch-ml input-parity gap 2 extension (2026-11-04): DOE's own migrant-permit
+# report is confirmed nationwide, with a "สำนักงานจัดหางานจังหวัด<province>"
+# row per province carrying the exact same permit-category columns as
+# Bangkok's 10 zones (see transform_silver_doe_migrant_worker.py's
+# PROVINCE SCOPE note). Modeled as 2 more "zones" that each cover a whole
+# province in one go (reusing the province's own TIS-1099 code as zone_id,
+# distinct from BMA's 1-10 by construction) -- every district in that
+# province bridges to this single zone, same bridge_bma_zone_district
+# mechanism BMA's own per-district zones already use, so downstream code
+# (e.g. the ML project's CL-D3 rule) needs no special-casing per province.
+_PROVINCE_ZONES = [(11, "จังหวัดสมุทรปราการ", "สมุทรปราการ"), (24, "จังหวัดฉะเชิงเทรา", "ฉะเชิงเทรา")]
+
+
 def _build_dim_bma_zone(bronze_conn, gold_conn):
     """kmch-ml input-parity gap 2. Reads the zone_id -> district-name
-    mapping from bronze.bma_zone_districts (not hardcoded) -- 10 zones.
+    mapping from bronze.bma_zone_districts (not hardcoded) -- 10 BMA zones.
     This is static Thai public-administration geography, not permit-count
     data, so it's sourced independently of whichever source currently
     provides fact_migrant_worker_permit's counts (see sql/bronze/17's
-    header for why this was split out on 2026-10-28)."""
+    header for why this was split out on 2026-10-28). Also seeds the 2
+    province-level zones in _PROVINCE_ZONES (see that constant's note)."""
     with bronze_conn.cursor() as bcur:
         bcur.execute("SELECT raw_zone_id, raw_zone_name_th, raw_district_name FROM bma_zone_districts")
         raw_rows = bcur.fetchall()
@@ -752,10 +766,21 @@ def _build_dim_bma_zone(bronze_conn, gold_conn):
             "INSERT INTO dim_bma_zone (zone_id, zone_name_th) VALUES (%s,%s)",
             [(zid, label) for zid, label, _ in zones],
         )
+        cur.execute("SELECT geo_key, province_name, district_name FROM dim_geography WHERE district_name IS NOT NULL")
+        geo_rows = cur.fetchall()
+        province_zone_rows = []
+        for zone_id, zone_label, province_name in _PROVINCE_ZONES:
+            districts = sorted({d for _gk, p, d in geo_rows if p == province_name})
+            province_zone_rows.append((zone_id, zone_label, districts))
+        cur.executemany(
+            "INSERT INTO dim_bma_zone (zone_id, zone_name_th) VALUES (%s,%s)",
+            [(zid, label) for zid, label, _ in province_zone_rows],
+        )
+        zones = zones + province_zone_rows
+
         cur.execute("SELECT zone_key, zone_id FROM dim_bma_zone")
         zone_key_by_id = {zid: zkey for zkey, zid in cur.fetchall()}
-        cur.execute("SELECT geo_key, district_name FROM dim_geography WHERE district_name IS NOT NULL")
-        geo_key_by_district = {name: key for key, name in cur.fetchall()}
+        geo_key_by_district = {d: gk for gk, _p, d in geo_rows}
 
     bridge_rows = []
     unmatched = []

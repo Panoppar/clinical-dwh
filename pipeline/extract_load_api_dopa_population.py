@@ -100,12 +100,70 @@ def _to_int(s: str) -> int:
     return int(s.replace(",", ""))
 
 
+_THAI_SANITY_WORDS = ("จังหวัด", "ตำบล", "อำเภอ")
+
+
+def _decode_dopa_text(content: bytes) -> str:
+    """DOPA's own text files are not consistently encoded the same way
+    across years -- confirmed live that some years' files, when decoded as
+    utf-8-sig, succeed (raise no error) but produce mojibake: the UTF-8 BOM
+    bytes themselves get re-interpreted as Thai characters ("๏ปฟ..."),
+    which happens when the underlying bytes are actually cp874/tis-620,
+    not UTF-8, for that year. A plain try/except UnicodeDecodeError can't
+    catch this, since the wrong decode doesn't raise -- it just produces
+    valid-looking but meaningless text. Each candidate encoding is
+    validated against recognizable Thai administrative words instead;
+    the first encoding whose decode both succeeds AND contains at least
+    one of them wins."""
+    candidates = []
+    for enc in ("utf-8-sig", "cp874", "tis-620"):
+        try:
+            text = content.decode(enc)
+        except UnicodeDecodeError:
+            continue
+        candidates.append((enc, text))
+        if any(w in text for w in _THAI_SANITY_WORDS):
+            return text
+    if candidates:
+        return candidates[0][1]  # best-effort: none passed the sanity check, use the first that at least decoded
+    raise UnicodeDecodeError("dopa", content, 0, 1, "no encoding in (utf-8-sig, cp874, tis-620) decoded this file")
+
+
 def _latest_key(stem_prefix: str):
     keys = [k for k in landing_store.list_prefix("dopa_population")
             if k.rsplit("/", 1)[-1].startswith(stem_prefix)]
     if not keys:
         return None
     return sorted(keys, key=lambda k: k.rsplit("__", 1)[-1])[-1]
+
+
+def _year_key(stem_prefix: str, yy: str):
+    """-> the landed key whose stem starts with stem_prefix + yy (e.g.
+    'age_10_' + '60' matches 'age_10_6012__...'), or None. Exact-year
+    lookup, unlike _latest_key() which just takes the newest of any year."""
+    keys = [k for k in landing_store.list_prefix("dopa_population")
+            if k.rsplit("/", 1)[-1].startswith(f"{stem_prefix}{yy}")]
+    if not keys:
+        return None
+    return sorted(keys, key=lambda k: k.rsplit("__", 1)[-1])[-1]
+
+
+_PLAIN_YEAR_RE = re.compile(r"plain_(\d{2})__")
+
+
+def _all_plain_years() -> list[str]:
+    """-> every distinct 2-digit BE year stem ('60', '61', ...) landed under
+    the dopa_population/plain_* prefix, ascending. One full extract_load
+    pass is run per year (see run()) so each year's own tambon_lookup
+    snapshot and unit-code resolution stays independent -- the plain-count
+    file is what anchors area codes for that year, and ingest_api_dopa_
+    population.py lands one plain_{yy} object per year it fetched."""
+    years = set()
+    for k in landing_store.list_prefix("dopa_population"):
+        m = _PLAIN_YEAR_RE.search(k.rsplit("/", 1)[-1])
+        if m:
+            years.add(m.group(1))
+    return sorted(years)
 
 
 def _load_tambon_lookup(bronze_conn) -> dict:
@@ -171,22 +229,17 @@ def _age_band_sums(fields: list[str], sex_offset: int) -> tuple[dict, dict]:
     return fine, coarse
 
 
-def run() -> None:
-    plain_key = _latest_key("plain_")
+def _extract_year(yy: str, bronze_conn, tambon_lookup: dict, batch_id: str) -> tuple[list[tuple], int]:
+    """-> (rows_out, unmatched_count) for one landed year. One full pass per
+    year (not a single pass over concatenated years) keeps each year's own
+    plain-file row order/resync state independent -- see module docstring."""
+    plain_key = _year_key("plain_", yy)
     if plain_key is None:
-        print("[extract_load_api_dopa_population] no landed plain-count object found, skipping "
-              "(run ingest_api_dopa_population first)")
-        return
+        print(f"[extract_load_api_dopa_population] 25{yy}: no landed plain-count object, skipping")
+        return [], 0
     plain_content = landing_store.read_bytes(plain_key)
-    plain_text = plain_content.decode("utf-8-sig")
-    plain_rows = _parse_plain_rows(plain_text)
+    plain_rows = _parse_plain_rows(_decode_dopa_text(plain_content))
     plain_hash = hashlib.sha256(plain_content).hexdigest()
-
-    bronze_conn = _connect("bronze")
-    tambon_lookup = _load_tambon_lookup(bronze_conn)
-
-    loaded_at = datetime.now(timezone.utc)
-    batch_id = f"dopa_population_load_{loaded_at:%Y%m%dT%H%M%S}"
 
     # Keyed by unit_code, not raw tambon_code: several original tambons
     # merge into one gold.dim_area unit (the 7 Bangkok post-2019 khwaeng
@@ -200,19 +253,31 @@ def run() -> None:
     unmatched = 0
 
     for cc in TARGET_PROVINCE_CODES:
-        age_key = _latest_key(f"age_{cc}_")
+        age_key = _year_key(f"age_{cc}_", yy)
         if age_key is None:
-            print(f"[extract_load_api_dopa_population] WARNING: no landed age-breakdown object "
-                  f"for province {cc}, skipping that province")
+            print(f"[extract_load_api_dopa_population] 25{yy}: WARNING: no landed age-breakdown "
+                  f"object for province {cc}, skipping that province")
             continue
         age_content = landing_store.read_bytes(age_key)
-        age_lines = [l for l in age_content.decode("utf-8-sig").splitlines() if l.strip()]
+        age_lines = [l for l in _decode_dopa_text(age_content).splitlines() if l.strip()]
 
         province_plain_rows = [r for r in plain_rows if r[1] == cc]
         age_names = [line.split("|", 1)[0] for line in age_lines]
 
         yymm = province_plain_rows[0][0]
         year_be, ref_month = int(yymm[:2]) + 2500, int(yymm[2:])
+
+        # Some historical years' age-breakdown files are corrupted at the
+        # source (confirmed live: 2562's Samut Prakan file decodes cleanly
+        # under UTF-8 but its *content* is itself mojibake -- DOPA's own
+        # export baked in a bad cp874-as-Thai-text conversion at some point
+        # before UTF-8-encoding the result, not something any decode-side
+        # fix here can reverse). A resync failure on a file like that is a
+        # DOPA-side data-quality problem for that one (year, province), not
+        # a bug -- skip just that province for this year rather than
+        # aborting the whole multi-year history for every province.
+        province_accum = {}
+        resync_failed = False
 
         # Confirmed live that the two files are normally in lockstep (same
         # row order, same row count), but not always -- Chachoengsao's
@@ -232,21 +297,23 @@ def run() -> None:
             if _norm_name(plain_name) != _norm_name(age_name):
                 if pi + 1 < len(province_plain_rows) and \
                         _norm_name(_plain_area_name(province_plain_rows[pi + 1])) == _norm_name(age_name):
-                    print(f"[extract_load_api_dopa_population] WARNING: province {cc}: plain-file row "
-                          f"{plain_name!r} has no counterpart in the age-breakdown file, skipping it "
-                          f"(no age-band data available for it this run)")
+                    print(f"[extract_load_api_dopa_population] 25{yy}: WARNING: province {cc}: "
+                          f"plain-file row {plain_name!r} has no counterpart in the age-breakdown "
+                          f"file, skipping it (no age-band data available for it this year)")
                     pi += 1
                     continue
                 if ai + 1 < len(age_lines) and _norm_name(plain_name) == _norm_name(age_names[ai + 1]):
-                    print(f"[extract_load_api_dopa_population] WARNING: province {cc}: age-breakdown row "
-                          f"{age_name!r} has no counterpart in the plain-count file, skipping it")
+                    print(f"[extract_load_api_dopa_population] 25{yy}: WARNING: province {cc}: "
+                          f"age-breakdown row {age_name!r} has no counterpart in the plain-count "
+                          f"file, skipping it")
                     ai += 1
                     continue
-                raise RuntimeError(
-                    f"extract_load_api_dopa_population: province {cc}: cannot resync plain-file row "
-                    f"{plain_name!r} (index {pi}) against age-breakdown row {age_name!r} (index {ai}) -- "
-                    f"the two files have diverged by more than one row, see module docstring"
-                )
+                print(f"[extract_load_api_dopa_population] 25{yy}: WARNING: province {cc}: cannot "
+                      f"resync plain-file row {plain_name!r} (index {pi}) against age-breakdown row "
+                      f"{age_name!r} (index {ai}) -- likely a source-side encoding/export problem "
+                      f"for this (year, province); skipping this province for this year entirely")
+                resync_failed = True
+                break
 
             age_line = age_lines[ai]
             pi += 1
@@ -269,7 +336,7 @@ def run() -> None:
                 _to_int(age_fields[217]), _to_int(age_fields[218]), _to_int(age_fields[219])
             )
 
-            unit_acc = accum.setdefault(unit_code, {
+            unit_acc = province_accum.setdefault(unit_code, {
                 "fine_male": {label: 0 for label, _ in FINE_BAND_RANGES},
                 "fine_female": {label: 0 for label, _ in FINE_BAND_RANGES},
                 "coarse_male": {label: 0 for label, _ in COARSE_BAND_RANGES},
@@ -288,12 +355,11 @@ def run() -> None:
             unit_acc["pop_female"] += pop_female
             unit_acc["pop_total"] += pop_total
 
+        if not resync_failed:
+            accum.update(province_accum)
+
     if not accum:
-        raise RuntimeError("extract_load_api_dopa_population: extracted 0 rows -- "
-                            "site layout may have changed, check manually before trusting this run")
-    if unmatched:
-        print(f"[extract_load_api_dopa_population] WARNING: {unmatched} subdistrict row(s) had no "
-              f"matching bronze.tambon_xwalk.raw_tambon_code")
+        return [], unmatched
 
     rows_out = []
     for unit_code, a in accum.items():
@@ -319,6 +385,36 @@ def run() -> None:
             str(pop_age_known), str(pop_unknown_age),
             f"live:stat.bora.dopa.go.th/{yymm}",
         ))
+    return rows_out, unmatched
+
+
+def run() -> None:
+    years = _all_plain_years()
+    if not years:
+        print("[extract_load_api_dopa_population] no landed plain-count objects found, skipping "
+              "(run ingest_api_dopa_population first)")
+        return
+
+    bronze_conn = _connect("bronze")
+    tambon_lookup = _load_tambon_lookup(bronze_conn)
+
+    loaded_at = datetime.now(timezone.utc)
+    batch_id = f"dopa_population_load_{loaded_at:%Y%m%dT%H%M%S}"
+
+    all_rows: list[tuple] = []
+    total_unmatched = 0
+    for yy in years:
+        rows, unmatched = _extract_year(yy, bronze_conn, tambon_lookup, batch_id)
+        all_rows.extend(rows)
+        total_unmatched += unmatched
+        print(f"[extract_load_api_dopa_population] 25{yy}: {len(rows)} unit-rows extracted")
+
+    if not all_rows:
+        raise RuntimeError("extract_load_api_dopa_population: extracted 0 rows across all years -- "
+                            "site layout may have changed, check manually before trusting this run")
+    if total_unmatched:
+        print(f"[extract_load_api_dopa_population] WARNING: {total_unmatched} subdistrict row(s) "
+              f"(across all years) had no matching tambon code")
 
     insert_sql = (
         "INSERT INTO dopa_population_year "
@@ -337,7 +433,7 @@ def run() -> None:
     with bronze_conn.cursor() as cur:
         n = 0
         batch = []
-        for row in rows_out:
+        for row in all_rows:
             batch.append(row)
             if len(batch) >= BATCH_SIZE:
                 cur.executemany(insert_sql, batch)
@@ -348,8 +444,8 @@ def run() -> None:
             n += len(batch)
     bronze_conn.commit()
     bronze_conn.close()
-    print(f"[extract_load_api_dopa_population] dopa_population_year: loaded {n} rows "
-          f"({unmatched} unmatched tambon codes skipped)")
+    print(f"[extract_load_api_dopa_population] dopa_population_year: loaded {n} rows across "
+          f"{len(years)} years ({total_unmatched} unmatched tambon codes skipped)")
 
 
 if __name__ == "__main__":

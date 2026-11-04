@@ -1,7 +1,15 @@
 """Cleanses bronze.dopa_population_year + bronze.dopa_population_supplement
 into silver.dopa_population_by_unit_year -- casts text to INT, converts
-year_be -> year_ce, and unions the two sources (confirmed zero overlapping
-(unit_code, year_be) pairs between them, see sql/silver/21's header note).
+year_be -> year_ce, and unions the two sources.
+
+The supplement was a file-based backfill for the 5 years (2560-2564) the
+live DOPA source didn't yet cover for Samut Prakan/Chachoengsao when it was
+built. Now that ingest_api_dopa_population.py walks the live source back to
+2560 for every province (see its MIN_YEAR_BE_2DIGIT), the two sources
+overlap on exactly those years -- confirmed live 2026-11-04 (duplicate key
+on unit_code=110101/year_ce=2017 during a fresh run). Live rows win; a
+supplement row is only kept if its (unit_code, year_be) isn't already
+covered live.
 """
 
 import os
@@ -41,6 +49,7 @@ def run() -> None:
     silver_conn = _connect("silver")
 
     rows = []
+    live_keys = set()
 
     with bronze_conn.cursor() as bcur:
         cols = ", ".join(["raw_unit_code", "raw_year_be", "raw_ref_month"]
@@ -60,15 +69,23 @@ def run() -> None:
                 _to_int(pop_male), _to_int(pop_female), _to_int(pop_total),
                 _to_int(pop_age_known), _to_int(pop_unknown_age), source_file,
             ))
+            live_keys.add((unit_code, year_be))
 
         bcur.execute("SELECT raw_unit_code, raw_year_be, raw_pop_total, raw_source FROM dopa_population_supplement")
+        skipped_overlap = 0
         for unit_code, year_be, pop_total, source in bcur.fetchall():
             year_be = int(year_be)
+            if (unit_code, year_be) in live_keys:
+                skipped_overlap += 1
+                continue
             rows.append((
                 unit_code, year_be, year_be - 543, None, "total_only",
                 *([None] * len(FINE_COLS)), *([None] * len(COARSE_COLS)),
                 None, None, _to_int(pop_total), None, None, source,
             ))
+    if skipped_overlap:
+        print(f"[silver_dopa_population] WARNING: {skipped_overlap} supplement row(s) skipped -- "
+              f"now covered by the live source (live rows win)")
 
     insert_sql = (
         "INSERT INTO dopa_population_by_unit_year "

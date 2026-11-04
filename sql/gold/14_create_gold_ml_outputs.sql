@@ -51,10 +51,41 @@ CREATE TABLE IF NOT EXISTS `ml_area_profile_cluster` (
     `algorithm`           VARCHAR(20) NOT NULL,
     `seed`                INT NOT NULL,
     `feature_version`     VARCHAR(20) NOT NULL,
+    `ml4_rule`            VARCHAR(20) COMMENT 'e.g. ML4-R2 -- which ML4 model revision produced this row (the 3-feature original vs. the 5-feature R2 revision), carried through so both can coexist in history',
+    `status`              VARCHAR(20) COMMENT 'e.g. parallel_R2 -- free-text run-status tag from the producing pipeline, not used by any query here',
     `run_date`            DATE NOT NULL,
     UNIQUE KEY `ux_mapc_area_date` (`area_key`, `run_date`),
     CONSTRAINT `fk_mapc_area` FOREIGN KEY (`area_key`) REFERENCES `dim_area` (`area_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Additive migration for installs that already created ml_area_profile_cluster
+-- before ml4_rule/status existed (CREATE TABLE IF NOT EXISTS above is a no-op
+-- against an existing table). `ADD COLUMN IF NOT EXISTS` itself isn't
+-- actually valid syntax on this server (confirmed live 2026-11-04, ERROR
+-- 1064 even on a bare `ADD COLUMN IF NOT EXISTS col INT`, despite docs
+-- suggesting 8.0.29+ support) -- information_schema + dynamic SQL is the
+-- version-safe way to make this idempotent instead.
+SET @ml4_rule_exists := (
+    SELECT COUNT(*) FROM information_schema.columns
+    WHERE table_schema = DATABASE() AND table_name = 'ml_area_profile_cluster' AND column_name = 'ml4_rule'
+);
+SET @ml4_rule_sql := IF(@ml4_rule_exists = 0,
+    'ALTER TABLE `ml_area_profile_cluster` ADD COLUMN `ml4_rule` VARCHAR(20) COMMENT ''e.g. ML4-R2 -- which ML4 model revision produced this row (the 3-feature original vs. the 5-feature R2 revision), carried through so both can coexist in history'' AFTER `feature_version`',
+    'SELECT 1');
+PREPARE ml4_rule_stmt FROM @ml4_rule_sql;
+EXECUTE ml4_rule_stmt;
+DEALLOCATE PREPARE ml4_rule_stmt;
+
+SET @status_exists := (
+    SELECT COUNT(*) FROM information_schema.columns
+    WHERE table_schema = DATABASE() AND table_name = 'ml_area_profile_cluster' AND column_name = 'status'
+);
+SET @status_sql := IF(@status_exists = 0,
+    'ALTER TABLE `ml_area_profile_cluster` ADD COLUMN `status` VARCHAR(20) COMMENT ''e.g. parallel_R2 -- free-text run-status tag from the producing pipeline, not used by any query here'' AFTER `ml4_rule`',
+    'SELECT 1');
+PREPARE status_stmt FROM @status_sql;
+EXECUTE status_stmt;
+DEALLOCATE PREPARE status_stmt;
 
 CREATE OR REPLACE VIEW `vw_ml_area_community_type_wide` AS
 SELECT a.unit_code, a.unit_th, a.province_code, a.amphoe_code, a.is_catchment,

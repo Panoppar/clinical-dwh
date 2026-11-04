@@ -1,12 +1,28 @@
-"""Loads bronze.doe_migrant_worker_monthly from the latest DOE PDF landed
-by ingest_api_doe_migrant_worker.py. Walks every table in the report's
+"""Loads bronze.doe_migrant_worker_monthly from every DOE PDF landed by
+ingest_api_doe_migrant_worker.py (one row set per report month -- see
+module-level HISTORY note below). Walks every table in each report's
 "คงเหลือ" (remaining-permits) section -- stops once the "ได้รับอนุญาตทำงาน
 ใหม่" (newly-permitted) section begins, confirmed live to start right
 after the remaining-permits section's own table numbering resets to 1
-again with a different title. Any table that has no Bangkok-zone rows
+again with a different title. Any table that has no matching area rows
 (e.g. table 3's by-business-sector breakdown) is silently skipped -- this
 makes the extraction robust to next month's exact table count/order
 changing, since nothing here is hardcoded to a specific table number.
+
+PROVINCE SCOPE (added 2026-11-04): this report is explicitly nationwide
+("...ทั่วราชอาณาจักร") -- every table carries a "ปริมณฑล" (greater-Bangkok)
+section with its own "สำนักงานจัดหางานจังหวัด<province>" row per province,
+confirmed live to include both Samut Prakan and Chachoengsao (this
+project's other 2 catchment provinces) with the exact same มาตรา-category
+column structure as Bangkok's own 10 zones. Only those 2 are captured
+here (PROVINCE_LABELS below) -- every other province's row is left
+unextracted, this isn't a general nationwide ingest.
+
+HISTORY (added 2026-11-04): processes every PDF currently landed (see
+ingest_api_doe_migrant_worker.py's own history-window note for why that's
+a ~20-month rolling window, not the 10 years this project would otherwise
+target -- a real limit of what DOE's own listing page publishes, not a
+scope cut made here).
 """
 
 import hashlib
@@ -22,6 +38,10 @@ import landing_store
 
 BATCH_SIZE = 2000
 _ZONE_LABEL_PREFIX = "สำนักงานจัดหางานกรุงเทพมหานครพื้นที่"
+_PROVINCE_OFFICE_PREFIX = "สำนักงานจัดหางานจังหวัด"
+# Only this project's other 2 catchment provinces -- not a general
+# nationwide capture, see module docstring's PROVINCE SCOPE note.
+PROVINCE_LABELS = {"สมุทรปราการ", "ฉะเชิงเทรา"}
 TABLE_HEADER_RE = re.compile(r"ตารางที่\s*(\d+)\s+(.+)")
 # Confirmed live: the cover-page title string doe.go.th shows on its listing
 # page ("สถิติการทำงานของคนต่างด้าวประจำเดือน...") does not actually appear
@@ -71,13 +91,17 @@ def _strip_continuation_suffix(title: str) -> str:
     return t
 
 
-# ZONE_RE is built from the already-mark-stripped prefix so matching can
-# compare like-for-like against zone_label after it too goes through
-# _strip_marks (see the ZONE_RE.match call below) -- the raw literal above
-# uses composed "ำ", but this PDF's text layer always extracts the
+# ZONE_RE/PROVINCE_RE are built from already-mark-stripped literals so
+# matching can compare like-for-like against zone_label after it too goes
+# through _strip_marks (see the .match calls below) -- the raw literals
+# above use composed "ำ", but this PDF's text layer always extracts the
 # decomposed form, so a direct match against the raw literal silently
 # matches nothing.
 ZONE_RE = re.compile(_strip_marks(_ZONE_LABEL_PREFIX) + r"\s*(\d+)$")
+_PROVINCE_LABELS_STRIPPED = {_strip_marks(p) for p in PROVINCE_LABELS}
+PROVINCE_RE = re.compile(
+    _strip_marks(_PROVINCE_OFFICE_PREFIX) + r"\s*(" + "|".join(_PROVINCE_LABELS_STRIPPED) + r")\s*$"
+)
 
 
 def _connect():
@@ -89,15 +113,32 @@ def _connect():
     )
 
 
-def _clean_number(s: str) -> str:
+# No single category/zone/sex cell in this report plausibly exceeds this --
+# the largest real figure seen live is the nationwide grand total column
+# (~4.2 million, itself excluded upstream) -- confirmed live a value this
+# large (one cell: 2,810,251,410) is a pdfplumber column-extraction glitch
+# on a specific province row/table combination, not a real count.
+_MAX_PLAUSIBLE_VALUE = 10_000_000
+
+
+def _clean_number(s: str) -> str | None:
     """Strips thousands-commas AND any stray internal whitespace -- confirmed
     live that pdfplumber occasionally splits one number across two text
     fragments on this PDF's narrower columns (e.g. "3 9,405" -> "39405"),
-    never a legitimate feature of these comma-grouped figures."""
+    never a legitimate feature of these comma-grouped figures. -> None (not
+    "0") for a value outside _MAX_PLAUSIBLE_VALUE, so the caller can skip
+    the cell and warn rather than silently writing 0 or a huge garbage
+    number into a real worker-count column."""
     s = (s or "").strip()
     if s in ("", "-"):
         return "0"
-    return re.sub(r"\s+", "", s).replace(",", "")
+    cleaned = re.sub(r"\s+", "", s).replace(",", "")
+    try:
+        if abs(int(cleaned)) > _MAX_PLAUSIBLE_VALUE:
+            return None
+    except ValueError:
+        return None
+    return cleaned
 
 
 def _build_column_map(header_rows: list[list]) -> list[tuple[str, str]]:
@@ -125,23 +166,10 @@ def _looks_like_header(rows: list[list]) -> bool:
     return bool(non_null) and all(c in {_strip_marks(x) for x in SEX_LABELS} for c in non_null)
 
 
-def run() -> None:
-    # latest_version() needs a fixed stem, but this source's stem varies by
-    # report month -- list the whole prefix and take the most recently
-    # written object instead. Keys are "<stem>__<YYYYMMDD>_<hash>.pdf";
-    # sorting lands on the latest date for same-month re-runs too.
-    keys = landing_store.list_prefix("doe_migrant_worker")
-    if not keys:
-        print("[extract_load_api_doe_migrant_worker] no landed object found, skipping "
-              "(run ingest_api_doe_migrant_worker first)")
-        return
-    key = sorted(keys, key=lambda k: k.rsplit("__", 1)[-1])[-1]
-
+def _extract_pdf(key: str, batch_id: str) -> list[tuple]:
+    """-> bronze row tuples for one landed PDF."""
     content = landing_store.read_bytes(key)
     file_hash = hashlib.sha256(content).hexdigest()
-
-    loaded_at = datetime.now(timezone.utc)
-    batch_id = f"doe_migrant_worker_load_{loaded_at:%Y%m%dT%H%M%S}"
 
     rows_out = []
     report_title = None
@@ -198,8 +226,12 @@ def run() -> None:
                 if not row or not row[0]:
                     continue
                 zone_label = row[0].strip().replace("\n", "")
-                is_zone = ZONE_RE.match(_strip_marks(zone_label)) or _strip_marks(zone_label) == _strip_marks(BKK_TOTAL_ZONE)
-                if not is_zone:
+                stripped_label = _strip_marks(zone_label)
+                is_area = (
+                    ZONE_RE.match(stripped_label) or PROVINCE_RE.match(stripped_label)
+                    or stripped_label == _strip_marks(BKK_TOTAL_ZONE)
+                )
+                if not is_area:
                     continue
                 for col_idx, (group_label, sex_label) in enumerate(col_map, start=1):
                     if col_idx >= len(row) or group_label is None or sex_label is None:
@@ -207,14 +239,53 @@ def run() -> None:
                     value = row[col_idx]
                     if value is None:
                         continue
+                    cleaned = _clean_number(value)
+                    if cleaned is None:
+                        print(f"[extract_load_api_doe_migrant_worker] {key}: WARNING: implausible value "
+                              f"{value!r} for zone={zone_label!r} group={group_label!r} sex={sex_label!r} "
+                              f"(table {current_table_num}), skipping this cell")
+                        continue
                     rows_out.append((
                         "doe_migrant_worker", key, len(rows_out) + 1, file_hash, batch_id, "DOE_MIGRANT_WORKER",
                         report_title, current_table_num, current_table_title, zone_label, group_label, sex_label,
-                        _clean_number(value),
+                        cleaned,
                     ))
 
     if not rows_out:
-        raise RuntimeError("extract_load_api_doe_migrant_worker: extracted 0 rows -- "
+        # Older reports in the history window can use a layout this
+        # extraction doesn't recognize at all (confirmed live: the oldest
+        # available report, 2567-06, yields 0 rows -- a real source-side
+        # format difference, not a bug in a specific row's data). Warn and
+        # skip that one report rather than losing every other month over
+        # it -- see run()'s own "zero PDFs succeeded" check for the actual
+        # hard-failure condition.
+        print(f"[extract_load_api_doe_migrant_worker] {key}: WARNING: extracted 0 rows -- "
+              f"this report's PDF layout may differ from newer ones, skipping it")
+        return []
+    print(f"[extract_load_api_doe_migrant_worker] {key}: {len(rows_out)} rows (report: {report_title!r})")
+    return rows_out
+
+
+def run() -> None:
+    keys = landing_store.list_prefix("doe_migrant_worker")
+    if not keys:
+        print("[extract_load_api_doe_migrant_worker] no landed objects found, skipping "
+              "(run ingest_api_doe_migrant_worker first)")
+        return
+
+    loaded_at = datetime.now(timezone.utc)
+    batch_id = f"doe_migrant_worker_load_{loaded_at:%Y%m%dT%H%M%S}"
+
+    all_rows: list[tuple] = []
+    n_ok = 0
+    for key in sorted(keys):
+        rows = _extract_pdf(key, batch_id)
+        if rows:
+            n_ok += 1
+        all_rows.extend(rows)
+
+    if n_ok == 0:
+        raise RuntimeError("extract_load_api_doe_migrant_worker: every landed PDF extracted 0 rows -- "
                             "PDF layout may have changed, check manually before trusting this run")
 
     insert_sql = (
@@ -227,7 +298,7 @@ def run() -> None:
     with conn.cursor() as cur:
         n = 0
         batch = []
-        for row in rows_out:
+        for row in all_rows:
             batch.append(row)
             if len(batch) >= BATCH_SIZE:
                 cur.executemany(insert_sql, batch)
@@ -239,7 +310,7 @@ def run() -> None:
     conn.commit()
     conn.close()
     print(f"[extract_load_api_doe_migrant_worker] doe_migrant_worker_monthly: loaded {n} rows "
-          f"from {key} (report: {report_title!r})")
+          f"from {n_ok}/{len(keys)} report(s) ({len(keys) - n_ok} skipped, 0 rows extracted)")
 
 
 if __name__ == "__main__":

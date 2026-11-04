@@ -57,6 +57,13 @@ ZONE_NUM_RE = re.compile(r"(\d+)\s*$")
 REPORT_DATE_RE = re.compile(r"เดือน\s*(\S+)\s*(\d{4})")
 TITLE_BOILERPLATE_PREFIX = "จำนวนคนต่างด้าวที่ได้รับอนุญาตทำงานคงเหลือทั่วราชอาณาจักร"
 SECTION_RE = re.compile(r"^มาตรา\s*(\d+)(/\d+)?")
+PROVINCE_OFFICE_PREFIX = "สำนักงานจัดหางานจังหวัด"
+# Reuses each province's own TIS-1099 province code as its zone_id -- distinct
+# from BMA's 1-10 zone numbering by construction (no BMA zone is ever >= 11),
+# so both schemes share dim_bma_zone.zone_id unambiguously. See
+# transform_gold_dimensions.py's _build_dim_bma_zone() for the matching
+# dim_bma_zone/bridge_bma_zone_district rows this resolves against.
+PROVINCE_ZONE_ID = {"สมุทรปราการ": 11, "ฉะเชิงเทรา": 24}
 
 # This PDF's text layer decomposes SARA AM into NIKHAHIT+SARA AA and
 # reassigns tone marks to inconsistent Private Use Area codepoints per font
@@ -117,6 +124,24 @@ def _strip_boilerplate_prefix(title: str) -> str | None:
     return None
 
 
+def _resolve_zone_id(zone_label: str) -> int | None:
+    """-> BMA zone number (1-10) for a Bangkok zone row, the matching
+    province code (11/24) for a Samut Prakan/Chachoengsao province-office
+    row, or None (the Bangkok-wide/ปริมณฑล/ภาคกลาง/other-province subtotal
+    rows this source isn't scoped to -- see module docstring)."""
+    stripped = _strip_marks(zone_label or "")
+    zone_m = ZONE_NUM_RE.search(stripped)
+    if zone_m:
+        return int(zone_m.group(1))
+    prefix = _strip_marks(PROVINCE_OFFICE_PREFIX)
+    if stripped.startswith(prefix):
+        province_name = stripped[len(prefix):].strip()
+        for name, zid in PROVINCE_ZONE_ID.items():
+            if _strip_marks(name) == province_name:
+                return zid
+    return None
+
+
 def _category_and_nationality(table_title: str, group_label: str) -> tuple[str, str | None, bool]:
     """-> (raw_category_text, nationality, is_overview). is_overview=True
     means this row came from table 2 directly (the zone x category
@@ -174,17 +199,33 @@ def run() -> None:
         bronze_rows = bcur.fetchall()
     bronze_conn.close()
 
-    report_period = None
-    pivoted = {}  # (zone_id, canonical_category, nationality) -> {sex_label: int_value}
+    # Report period is resolved per ROW (not once globally) since bronze now
+    # carries multiple report months at once -- one extract_load_api_doe_
+    # migrant_worker.py pass per landed PDF, all landing into the same
+    # table (see that module's HISTORY note). Memoized since every row
+    # from the same PDF shares the same raw_report_title string.
+    _period_cache: dict[str, tuple[int, int] | None] = {}
+
+    def period_of(report_title: str) -> tuple[int, int] | None:
+        if report_title not in _period_cache:
+            _period_cache[report_title] = _parse_report_month(report_title)
+        return _period_cache[report_title]
+
+    pivoted = {}  # (zone_id, year_ce, month_num, canonical_category, nationality) -> {sex_label: int_value}
+    unparseable_periods = 0
+    unresolved_zones = 0
 
     for report_title, table_title, zone_label, group_label, sex_label, value in bronze_rows:
-        if report_period is None:
-            report_period = _parse_report_month(report_title)
+        period = period_of(report_title)
+        if period is None:
+            unparseable_periods += 1
+            continue
+        year_ce, month_num = period
 
-        zone_m = ZONE_NUM_RE.search(zone_label or "")
-        if not zone_m:
-            continue  # Bangkok-wide grand-total row, excluded (see sql/silver/23 header)
-        zone_id = int(zone_m.group(1))
+        zone_id = _resolve_zone_id(zone_label)
+        if zone_id is None:
+            unresolved_zones += 1
+            continue  # Bangkok-wide/ปริมณฑล/ภาคกลาง/other-province subtotal row, out of scope (see module docstring)
 
         raw_category, nationality, is_overview = _category_and_nationality(table_title, group_label)
         if nationality is None and raw_category == CATEGORY_GRAND_TOTAL_LABEL:
@@ -196,20 +237,23 @@ def run() -> None:
         if category is None:
             continue  # unparseable, or มาตรา 63/2's excluded legacy baseline column
 
-        key = (zone_id, category, nationality)
+        key = (zone_id, year_ce, month_num, category, nationality)
         bucket = pivoted.setdefault(key, {})
         bucket[sex_label] = bucket.get(sex_label, 0) + int(value)
 
-    if report_period is None:
-        raise RuntimeError("transform_silver_doe_migrant_worker: could not parse report month/year "
-                            "from bronze.doe_migrant_worker_monthly.raw_report_title")
-    report_year_ce, report_month_num = report_period
+    if not pivoted:
+        raise RuntimeError("transform_silver_doe_migrant_worker: pivoted 0 rows -- "
+                            "check bronze.doe_migrant_worker_monthly has data and report titles parse")
+    if unparseable_periods:
+        print(f"[silver_doe_migrant_worker] WARNING: {unparseable_periods} bronze row(s) had an "
+              f"unparseable report_title, skipped")
 
     rows = [
-        (zone_id, report_year_ce, report_month_num, category, nationality,
+        (zone_id, year_ce, month_num, category, nationality,
          sexes.get("รวม", 0), sexes.get("ชาย", 0), sexes.get("หญิง", 0))
-        for (zone_id, category, nationality), sexes in pivoted.items()
+        for (zone_id, year_ce, month_num, category, nationality), sexes in pivoted.items()
     ]
+    n_periods = len({(r[1], r[2]) for r in rows})
 
     insert_sql = (
         "INSERT INTO doe_migrant_worker_permit_monthly "
@@ -221,7 +265,7 @@ def run() -> None:
     silver_conn.commit()
     silver_conn.close()
     print(f"[silver_doe_migrant_worker] doe_migrant_worker_permit_monthly: {len(rows)} rows "
-          f"(report period {report_year_ce}-{report_month_num:02d})")
+          f"across {n_periods} report period(s) ({unresolved_zones} out-of-scope zone rows skipped)")
 
 
 if __name__ == "__main__":

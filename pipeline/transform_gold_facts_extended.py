@@ -198,6 +198,14 @@ def _build_fact_population_by_area(silver_conn, gold_conn):
 
 
 def _build_fact_migrant_worker_permit(silver_conn, gold_conn):
+    """Grain: (zone, date_key, report_month_num, permit_category,
+    nationality) -- date_key/month resolved per ROW, not once globally,
+    since silver now carries multiple report periods at once (one DOE PDF
+    per month, up to the ~20-month history window ingest_api_doe_migrant_
+    worker.py walks -- see that module's HISTORY note) and zone_id now also
+    covers Samut Prakan/Chachoengsao's province-level rows (zone_id 11/24),
+    not just BMA's 10 Bangkok zones -- see transform_silver_doe_migrant_
+    worker.py's PROVINCE_ZONE_ID and this file's _build_dim_bma_zone()."""
     with silver_conn.cursor() as scur:
         scur.execute(
             "SELECT zone_id, report_year_ce, report_month_num, permit_category, nationality, total, male, female "
@@ -208,22 +216,30 @@ def _build_fact_migrant_worker_permit(silver_conn, gold_conn):
     if not silver_rows:
         print("[gold_fact_extended] fact_migrant_worker_permit: silver.doe_migrant_worker_permit_monthly is empty, skipping")
         return
-    # One DOE report per pipeline run -- same report_year_ce for every row.
-    report_year_ce = silver_rows[0][1]
 
+    years_needed = {r[1] for r in silver_rows}
     with gold_conn.cursor() as cur:
         cur.execute("SELECT zone_key, zone_id FROM dim_bma_zone")
         zone_lookup = {zid: zkey for zkey, zid in cur.fetchall()}
-        cur.execute("SELECT date_key FROM dim_date WHERE year_ce=%s", (report_year_ce,))
-        row = cur.fetchone()
-        if row is None:
-            raise RuntimeError(f"fact_migrant_worker_permit: dim_date has no row for year_ce={report_year_ce}")
-        date_key = row[0]
+        cur.execute(
+            f"SELECT year_ce, date_key FROM dim_date WHERE year_ce IN ({','.join(['%s'] * len(years_needed))})",
+            tuple(years_needed),
+        )
+        date_key_by_year = dict(cur.fetchall())
+    missing_years = years_needed - set(date_key_by_year)
+    if missing_years:
+        raise RuntimeError(f"fact_migrant_worker_permit: dim_date has no row for year_ce in {sorted(missing_years)}")
 
-    rows = [
-        (zone_lookup[zone_id], date_key, month_num, category, nationality, total, male, female)
-        for zone_id, _year_ce, month_num, category, nationality, total, male, female in silver_rows
-    ]
+    rows, skipped_zone = [], 0
+    for zone_id, year_ce, month_num, category, nationality, total, male, female in silver_rows:
+        zone_key = zone_lookup.get(zone_id)
+        if zone_key is None:
+            skipped_zone += 1
+            continue
+        rows.append((zone_key, date_key_by_year[year_ce], month_num, category, nationality, total, male, female))
+    if skipped_zone:
+        print(f"[gold_fact_extended] WARNING: fact_migrant_worker_permit: {skipped_zone} row(s) had a "
+              f"zone_id not in dim_bma_zone, skipped")
 
     insert_sql = (
         "INSERT INTO fact_migrant_worker_permit "
@@ -233,7 +249,7 @@ def _build_fact_migrant_worker_permit(silver_conn, gold_conn):
     with gold_conn.cursor() as cur:
         cur.executemany(insert_sql, rows)
     gold_conn.commit()
-    print(f"[gold_fact_extended] fact_migrant_worker_permit: {len(rows)} rows (report {report_year_ce}-{silver_rows[0][2]:02d})")
+    print(f"[gold_fact_extended] fact_migrant_worker_permit: {len(rows)} rows across {len(years_needed)} year(s)")
 
 
 def run() -> None:
